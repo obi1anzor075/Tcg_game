@@ -1,13 +1,21 @@
 using UnityEngine;
 using System.Collections;
 using System.Linq;
+using System.Collections.Generic;
 
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
 
     public GameState State { get; private set; }
-    [SerializeField]public CardData chosenHeroData = null;
+
+    // Список карт, сыгранных в текущем раунде
+    private readonly List<CardInstance> _roundPlayed = new();
+
+    [SerializeField] private CardData _chosenHeroData = null;
+    [Header("Начальное поле")]
+    [SerializeField] private int _initialMinionCount = 3;
+
 
     private void Awake()
     {
@@ -36,23 +44,52 @@ public class GameManager : MonoBehaviour
         {
             // Ход игрока
             State = GameState.PlayerTurn;
-            // Раздать карту и обновить UI
+
+            // 2.1. Сброс и восстановление лояльности
+            TurnManager.Instance.StartTurn();
+
+            // 2.2. Добор карты
             HandManager.Instance.DrawTurnCards(true);
             UIManager.Instance.RefreshHands();
-            TurnManager.Instance.StartTurn();
+
+            // 2.3. Корутин игрока
             yield return StartCoroutine(PlayerTurn());
 
-            // Проверка на победу/поражение
+            UIManager.Instance.RefreshBattlefield();
+            UIManager.Instance.ClearPlayedArea();
+            GameManager.Instance.ClearRoundPlayed();
+
+            // 2.4. Переносим сыгранные карты в поле и очищаем PlayedCards
+            UIManager.Instance.RefreshBattlefield();
+            UIManager.Instance.ClearPlayedArea();
+
+            // 2.5. Проверка конца игры
             if (CheckGameOver()) break;
 
-            // Ход AI
+            // Ход ИИ
             State = GameState.EnemyTurn;
-            // Раздать карту и обновить UI
+
+            // 2.6. Сброс и восстановление лояльности для ИИ
+            TurnManager.Instance.StartTurn();
+
+            // 2.7. Добор карты ИИ и обновление руки
             HandManager.Instance.DrawTurnCards(false);
             UIManager.Instance.RefreshHands();
-            TurnManager.Instance.StartTurn();   // можно разделить лояльность/условия для врага
+
+            // 2.8. Корутин ИИ
             yield return StartCoroutine(EnemyTurn());
 
+            UIManager.Instance.RefreshBattlefield();
+            UIManager.Instance.ClearPlayedArea();
+            GameManager.Instance.ClearRoundPlayed();
+
+
+            // 2.9. Перенос ИИ-карт и очистка PlayedCards
+            UIManager.Instance.RefreshBattlefield();
+            UIManager.Instance.ClearPlayedArea();
+            ClearRoundPlayed();
+
+            // 2.10. Проверка конца игры
             if (CheckGameOver()) break;
         }
 
@@ -62,23 +99,39 @@ public class GameManager : MonoBehaviour
 
     private IEnumerator Setup()
     {
-        // TODO: добавить героя (через CardInstance с type=Hero) в TurnManager.Instance.playerCards
-        // Раздать стартовую руку и обновить UI
         // 1) Добавляем выбранного героя на поле
-        var heroInst = new CardInstance(chosenHeroData);
+        var heroInst = new CardInstance(_chosenHeroData);
         TurnManager.Instance.AddPlayerCard(heroInst);
 
-        // 2) Рисуем поле с героем
+        // 2) Добавляем _initialMinionCount верных сразу на поле
+        int added = 0;
+        // Берём из колоды первые по типу Minion
+        foreach (var minionData in HandManager.Instance.playerDeck
+                                        .Where(c => c.type == CardType.Minion)
+                                        .ToList())
+        {
+            if (added >= _initialMinionCount)
+                break;
+
+            // Удаляем эту карту из колоды
+            HandManager.Instance.playerDeck.Remove(minionData);
+
+            // Создаём экземпляр и добавляем на поле
+            TurnManager.Instance.AddPlayerCard(new CardInstance(minionData));
+            added++;
+        }
+
+        // 3) Отрисовываем поле (герой + стартовые верные)
         UIManager.Instance.RefreshBattlefield();
 
-        // 3) Раздаём стартовые руки
+        // 4) Раздаём стартовые руки
         HandManager.Instance.DealStartHands();
         UIManager.Instance.RefreshHands();
 
-
-        Debug.Log("Game Setup...");
+        Debug.Log($"Game Setup complete: Hero + {added} minions placed, {HandManager.Instance.playerHand.Count} cards in hand.");
         yield return null; // здесь можно подождать анимации
     }
+
 
     private IEnumerator PlayerTurn()
     {
@@ -122,10 +175,22 @@ public class GameManager : MonoBehaviour
         return (playerHeroDead  && allPlayerMinionsDead) || (enemyHeroDead && allEnemyMinionsDead);
     }
 
+    /// <summary>Сохраняет экземпляр сыгранной карты текущего раунда.</summary>
+    public void RecordPlayed(CardInstance inst)
+    {
+        _roundPlayed.Add(inst);
+    }
+
+    /// <summary>Очищает список сыгранных за раунд карт.</summary>
+    public void ClearRoundPlayed()
+    {
+        _roundPlayed.Clear();
+    }
 
     private void HandleGameOver()
     {
         Debug.Log("Game Over!");
         // TODO: показать экран победы/поражения
     }
+
 }

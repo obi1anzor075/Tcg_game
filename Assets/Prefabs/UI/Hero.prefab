@@ -373,8 +373,8 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7313370461259032028}
   m_LocalRotation: {x: -0, y: -0, z: -5.8207654e-11, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.00017285343}
-  m_LocalScale: {x: 0.99999994, y: 1.0000001, z: 1.0000001}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1.0000001, z: 1.0000001}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 7313370460590811943}
@@ -386,11 +386,11 @@ RectTransform:
   m_Father: {fileID: 0}
   m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 70.919106, y: 53.939896}
-  m_SizeDelta: {x: 100, y: 200}
-  m_Pivot: {x: 0.5, y: 0.5}
+  m_AnchorMin: {x: 0.5, y: 0}
+  m_AnchorMax: {x: 0.5, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 75, y: 150}
+  m_Pivot: {x: 0.5, y: 0}
 --- !u!222 &7313370461259032025
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -459,7 +459,6 @@ MonoBehaviour:
   _nameText: {fileID: 7313370461494975224}
   _loyaltyText: {fileID: 0}
   _hpText: {fileID: 7313370461168682392}
-  _highlightBorder: {fileID: 0}
   _abilityDescText: {fileID: 7313370462158869555}
 --- !u!1 &7313370461494975226
 GameObject:
@@ -825,7 +824,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 7.1
+  m_fontSize: 5.8
   m_fontSizeBase: 18
   m_fontWeight: 400
   m_enableAutoSizing: 1

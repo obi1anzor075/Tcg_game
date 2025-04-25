@@ -42,7 +42,7 @@ public class AIManager : MonoBehaviour
             if (cardData.type == CardType.Minion &&
                 cardData.baseLoyalty <= totalLoyalty)
             {
-                TurnManager.Instance.PlayCard(cardData);
+                TurnManager.Instance.TryPlayCard(cardData);
                 totalLoyalty -= cardData.baseLoyalty;
                 hand.Remove(cardData);
                 Debug.Log($"AI played minion {cardData.cardName}");
@@ -55,7 +55,7 @@ public class AIManager : MonoBehaviour
             if ((cardData.type == CardType.Spell || cardData.type == CardType.HeroAbility) &&
                 cardData.loyaltyCost <= totalLoyalty)
             {
-                TurnManager.Instance.PlayCard(cardData);
+                TurnManager.Instance.TryPlayCard(cardData);
                 totalLoyalty -= cardData.loyaltyCost;
                 hand.Remove(cardData);
                 Debug.Log($"AI used ability {cardData.cardName}");

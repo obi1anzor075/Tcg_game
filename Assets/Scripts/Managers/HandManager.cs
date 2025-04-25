@@ -39,12 +39,16 @@ public class HandManager : MonoBehaviour
         Shuffle(playerDeck);
         Shuffle(enemyDeck);
 
+        Debug.Log($"[DealStartHands] startHandSize={startHandSize}, playerDeck.Count={playerDeck.Count}");
+
         for (int i = 0; i < startHandSize; i++)
         {
             DrawCard(playerDeck, playerHand);
             DrawCard(enemyDeck, enemyHand);
+            Debug.Log($"  after draw {i + 1}: playerHand.Count={playerHand.Count}");
         }
     }
+
 
     /// <summary>
     /// Вызывается в StartTurn() GameManager: добираем карту.

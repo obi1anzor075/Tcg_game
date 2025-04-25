@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System;
+using System.Linq;
 
 #region UI: UIManager
 
@@ -26,8 +27,13 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Transform _enemyHandArea;
 
     [Header("Battlefield Areas")]
-    [SerializeField] private Transform _playerBattleArea;
-    [SerializeField] private Transform _enemyBattleArea;
+    [SerializeField] private Transform _playerHeroArea;
+    [SerializeField] private Transform _playerMinionsArea;
+    [SerializeField] private Transform _enemyHeroArea;
+    [SerializeField] private Transform _enemyMinionsArea;
+
+    [Header("Played Cards Area")]
+    [SerializeField] private Transform _playedCardsArea;
 
     #endregion
 
@@ -88,31 +94,59 @@ public class UIManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Обновляет UI поля битвы, создавая карты через CardFactory.
+    /// Обновляет UI поля битвы: герой по центру и верные впереди него.
     /// </summary>
     public void RefreshBattlefield()
     {
-        foreach (Transform t in _playerBattleArea) Destroy(t.gameObject);
-        foreach (var inst in TurnManager.Instance.PlayerCards)
-        {
-            if (inst.cardData.type == CardType.Hero)
-                CardFactory.Instance.CreateHeroOnField(inst.cardData, _playerBattleArea);
-            else if (inst.cardData.type == CardType.Minion)
-                CardFactory.Instance.CreateMinion(inst.cardData, _playerBattleArea, false, true);
-            else
-                CardFactory.Instance.CreateSpell(inst.cardData, _playerBattleArea, false, true);
-        }
+        // Игрок
+        foreach (Transform t in _playerHeroArea) Destroy(t.gameObject);
+        foreach (Transform t in _playerMinionsArea) Destroy(t.gameObject);
 
-        foreach (Transform t in _enemyBattleArea) Destroy(t.gameObject);
-        foreach (var inst in TurnManager.Instance.EnemyCards)
-        {
-            if (inst.cardData.type == CardType.Hero)
-                CardFactory.Instance.CreateHeroOnField(inst.cardData, _enemyBattleArea);
-            else if (inst.cardData.type == CardType.Minion)
-                CardFactory.Instance.CreateMinion(inst.cardData, _enemyBattleArea, false, false);
-            else
-                CardFactory.Instance.CreateSpell(inst.cardData, _enemyBattleArea, false, false);
-        }
+        // Герой игрока
+        var playerHero = TurnManager.Instance.PlayerCards
+            .FirstOrDefault(c => c.cardData.type == CardType.Hero);
+        if (playerHero != null)
+            CardFactory.Instance.CreateHeroOnField(playerHero.cardData, _playerHeroArea);
+
+        // Верные игрока
+        var playerMinions = TurnManager.Instance.PlayerCards
+            .Where(c => c.cardData.type == CardType.Minion);
+        foreach (var inst in playerMinions)
+            CardFactory.Instance.CreateMinion(inst.cardData, _playerMinionsArea, false, true);
+
+        // Противник
+        foreach (Transform t in _enemyHeroArea) Destroy(t.gameObject);
+        foreach (Transform t in _enemyMinionsArea) Destroy(t.gameObject);
+
+        // Герой противника
+        var enemyHero = TurnManager.Instance.EnemyCards
+            .FirstOrDefault(c => c.cardData.type == CardType.Hero);
+        if (enemyHero != null)
+            CardFactory.Instance.CreateHeroOnField(enemyHero.cardData, _enemyHeroArea);
+
+        // Верные противника
+        var enemyMinions = TurnManager.Instance.EnemyCards
+            .Where(c => c.cardData.type == CardType.Minion);
+        foreach (var inst in enemyMinions)
+            CardFactory.Instance.CreateMinion(inst.cardData, _enemyMinionsArea, false, false);
+    }
+
+    /// <summary>Показать карту, сыгранную из руки, в зоне PlayedCardsPanel.</summary>
+    public void PlacePlayedCard(CardInstance instance, bool isPlayer)
+    {
+        if (instance.cardData.type == CardType.Minion || instance.cardData.type == CardType.Spell)
+            CardFactory.Instance.CreateMinion(instance.cardData, _playedCardsArea, false, isPlayer);
+        else
+            CardFactory.Instance.CreateSpell(instance.cardData, _playedCardsArea, false, isPlayer);
+    }
+
+    /// <summary>
+    /// Очищает панель сыгранных карт.
+    /// </summary>
+    public void ClearPlayedArea()
+    {
+        foreach (Transform t in _playedCardsArea)
+            Destroy(t.gameObject);
     }
 
     /// <summary>

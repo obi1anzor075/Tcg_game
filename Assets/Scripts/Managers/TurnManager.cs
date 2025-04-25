@@ -60,37 +60,45 @@ public class TurnManager : MonoBehaviour
 
         foreach (var card in _playerCards)
         {
+            // сброс и получение ло€льности из каждой карты
             card.ResetLoyalty();
             if (card.currentLoyalty > 0)
                 _totalPlayerLoyalty += card.currentLoyalty;
         }
 
-        Debug.Log($"[TurnManager] StartTurn Ч Total Loyalty: {_totalPlayerLoyalty}");
+        Debug.Log($"[TurnManager] New turn. Total Loyalty = {_totalPlayerLoyalty}");
     }
 
-    /// <summary>
-    /// –азыгрывает карту: миньон выходит на поле, способность примен€етс€.
-    /// </summary>
-    /// <returns>true если карта сыграна, иначе false.</returns>
-    public bool PlayCard(CardData cardData)
-    {
-        if (cardData.type == CardType.Minion &&
-            cardData.baseLoyalty <= _totalPlayerLoyalty)
-        {
-            var newCard = new CardInstance(cardData);
-            _playerCards.Add(newCard);
-            _totalPlayerLoyalty -= cardData.baseLoyalty;
-            return true;
-        }
-        else if ((cardData.type == CardType.Spell || cardData.type == CardType.HeroAbility) &&
-                  cardData.loyaltyCost <= _totalPlayerLoyalty)
-        {
-            ApplyCardEffect(cardData);
-            _totalPlayerLoyalty -= cardData.loyaltyCost;
-            return true;
-        }
 
-        return false;
+    /// <summary>
+    /// ѕытаетс€ разыграть карту. ≈сли это миньон Ч добавл€ет на поле и возвращает экземпл€р; 
+    /// если способность Ч примен€ет еЄ. ¬ обоих случа€х уменьшает ресурс ло€льности.
+    /// </summary>
+    public CardInstance TryPlayCard(CardData cardData)
+    {
+        // стоимость карты:
+        int cost = cardData.type == CardType.Minion
+            ? cardData.baseLoyalty
+            : cardData.loyaltyCost;
+
+        if (cost > _totalPlayerLoyalty)
+            return null; // недостаточно преданности
+
+        // уменьшаем ресурс
+        _totalPlayerLoyalty -= cost;
+
+        if (cardData.type == CardType.Minion)
+        {
+            var inst = new CardInstance(cardData);
+            _playerCards.Add(inst);
+            return inst;
+        }
+        else
+        {
+            // способности
+            ApplyCardEffect(cardData);
+            return null;
+        }
     }
 
     /// <summary>
@@ -109,6 +117,14 @@ public class TurnManager : MonoBehaviour
     {
         _playerCards.RemoveAll(c => !c.IsAlive);
         _enemyCards.RemoveAll(c => !c.IsAlive);
+    }
+
+    /// <summary>—писывает указанную преданность (без создани€ CardInstance).</summary>
+    public bool TrySpendLoyalty(int amount)
+    {
+        if (amount > _totalPlayerLoyalty) return false;
+        _totalPlayerLoyalty -= amount;
+        return true;
     }
 
     #endregion

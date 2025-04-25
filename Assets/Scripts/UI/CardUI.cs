@@ -9,10 +9,9 @@ public class CardUI : MonoBehaviour
 
     [SerializeField] private Image _artworkImage;
     [SerializeField] private TMP_Text _nameText;
-    [SerializeField] private TMP_Text _loyaltyText;
-    [SerializeField] private TMP_Text _hpText;
-    [SerializeField] private Image _highlightBorder;
-    [SerializeField] private TMP_Text _abilityDescText; // для описания способности
+    [SerializeField] private TMP_Text _loyaltyText;      // может быть не задан
+    [SerializeField] private TMP_Text _hpText;           // может быть не задан
+    [SerializeField] private TMP_Text _abilityDescText;  // может быть не задан
 
     #endregion
 
@@ -35,20 +34,28 @@ public class CardUI : MonoBehaviour
         _cardInstance = null;
         _isPlayerHand = isPlayer;
 
-        _artworkImage.sprite = data.artwork;
-        _nameText.text = data.cardName;
-        _loyaltyText.text = data.baseLoyalty.ToString();
-        _hpText.text = data.maxHP.ToString();
+        // Арт и имя
+        if (_artworkImage != null) _artworkImage.sprite = data.artwork;
+        if (_nameText != null) _nameText.text = data.cardName;
 
-        // Описание способности, если есть
-        if (data.ability != null)
+        // Лояльность
+        if (_loyaltyText != null) _loyaltyText.text = data.baseLoyalty.ToString();
+
+        // HP
+        if (_hpText != null) _hpText.text = data.maxHP.ToString();
+
+        // Описание способности
+        if (_abilityDescText != null)
         {
-            _abilityDescText.text = data.ability.description;
-            _abilityDescText.gameObject.SetActive(true);
-        }
-        else
-        {
-            _abilityDescText.gameObject.SetActive(false);
+            if (data.ability != null)
+            {
+                _abilityDescText.text = data.ability.description;
+                _abilityDescText.gameObject.SetActive(true);
+            }
+            else
+            {
+                _abilityDescText.gameObject.SetActive(false);
+            }
         }
 
         // Настройка клика
@@ -56,25 +63,22 @@ public class CardUI : MonoBehaviour
         btn.onClick.RemoveAllListeners();
         btn.onClick.AddListener(OnClicked);
 
-        // Скрыть подсветку
-        _highlightBorder.enabled = false;
     }
 
     /// <summary>
-    /// Отображение рубашки (для ИИ).
+    /// Показать рубашку карты (для ИИ).
     /// </summary>
     public void SetupBack()
     {
-        _artworkImage.gameObject.SetActive(false);
-        _nameText.text = "";
-        _loyaltyText.text = "";
-        _hpText.text = "";
-        _abilityDescText.gameObject.SetActive(false);
-        _highlightBorder.enabled = false;
+        if (_artworkImage != null) _artworkImage.gameObject.SetActive(false);
+        if (_nameText != null) _nameText.text = "";
+        if (_loyaltyText != null) _loyaltyText.text = "";
+        if (_hpText != null) _hpText.text = "";
+        if (_abilityDescText != null) _abilityDescText.gameObject.SetActive(false);
     }
 
     /// <summary>
-    /// Настроить UI для карты на поле.
+    /// Настроить UI для карты на поле (битва).
     /// </summary>
     public void SetupBattle(CardInstance instance)
     {
@@ -82,20 +86,28 @@ public class CardUI : MonoBehaviour
         _cardData = instance.cardData;
         _isPlayerHand = false;
 
-        _artworkImage.sprite = _cardData.artwork;
-        _nameText.text = _cardData.cardName;
-        _loyaltyText.text = instance.currentLoyalty.ToString();
-        _hpText.text = instance.currentHP.ToString();
+        // Арт и имя
+        if (_artworkImage != null) _artworkImage.sprite = _cardData.artwork;
+        if (_nameText != null) _nameText.text = _cardData.cardName;
 
-        // Описание способности, если есть
-        if (_cardData.ability != null)
+        // Лояльность
+        if (_loyaltyText != null) _loyaltyText.text = instance.currentLoyalty.ToString();
+
+        // HP
+        if (_hpText != null) _hpText.text = instance.currentHP.ToString();
+
+        // Описание способности
+        if (_abilityDescText != null)
         {
-            _abilityDescText.text = _cardData.ability.description;
-            _abilityDescText.gameObject.SetActive(true);
-        }
-        else
-        {
-            _abilityDescText.gameObject.SetActive(false);
+            if (_cardData.ability != null)
+            {
+                _abilityDescText.text = _cardData.ability.description;
+                _abilityDescText.gameObject.SetActive(true);
+            }
+            else
+            {
+                _abilityDescText.gameObject.SetActive(false);
+            }
         }
 
         // Настройка клика
@@ -103,15 +115,14 @@ public class CardUI : MonoBehaviour
         btn.onClick.RemoveAllListeners();
         btn.onClick.AddListener(OnClicked);
 
-        _highlightBorder.enabled = false;
     }
 
     /// <summary>
-    /// Включить/выключить подсветку.
+    /// Включить/выключить подсветку карты (если есть граница).
     /// </summary>
     public void SetHighlight(bool highlight)
     {
-        _highlightBorder.enabled = highlight;
+
     }
 
     #endregion
@@ -120,27 +131,43 @@ public class CardUI : MonoBehaviour
 
     private void OnClicked()
     {
-        if (UIManager.Instance.IsTargeting && _cardInstance != null)
+        if (_isPlayerHand)
         {
+            // 1. Определяем стоимость
+            int cost = (_cardData.type == CardType.Minion)
+                ? _cardData.baseLoyalty
+                : _cardData.loyaltyCost;
+
+            // 2. Проверяем и списываем преданность
+            if (!TurnManager.Instance.TrySpendLoyalty(cost))
+            {
+                Debug.LogWarning("Not enough loyalty to play " + _cardData.cardName);
+                return;
+            }
+
+            // 3. Убираем карту из руки
+            if (!HandManager.Instance.TryPlayCard(_cardData, true))
+                return;
+
+            // 4. Создаём временный экземпляр и показываем в панели сыгранных
+            var inst = new CardInstance(_cardData);
+            UIManager.Instance.PlacePlayedCard(inst, true);
+
+            // 5. Запоминаем, чтобы потом «убить» её
+            GameManager.Instance.RecordPlayed(inst);
+
+            // 6. Обновляем UI руки
+            UIManager.Instance.RefreshHands();
+        }
+        else if (UIManager.Instance.IsTargeting && _cardInstance != null)
+        {
+            // таргетинг способностей
             EffectProcessor.Instance.ApplyEffectTo(_cardInstance, UIManager.Instance.CurrentEffectCard);
             UIManager.Instance.EndTargetMode();
             UIManager.Instance.RefreshBattlefield();
         }
-        else if (_isPlayerHand)
-        {
-            if (!HandManager.Instance.TryPlayCard(_cardData, true))
-                return;
-
-            TurnManager.Instance.PlayCard(_cardData);
-
-            if (_cardData.type == CardType.Spell || _cardData.type == CardType.HeroAbility)
-                UIManager.Instance.BeginTargetMode(_cardData);
-            else
-                UIManager.Instance.RefreshBattlefield();
-
-            UIManager.Instance.RefreshHands();
-        }
     }
+
 
     #endregion
 }
