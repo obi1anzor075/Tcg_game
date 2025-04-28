@@ -93,4 +93,26 @@ public class CardFactory : MonoBehaviour
         ui.SetupBattle(inst, isPlayer);
         return ui;
     }
+
+    /// <summary>
+    /// ƒл€ миньона на поле: принимает готовый экземпл€р и вызывает SetupBattle.
+    /// </summary>
+    public CardUI CreateMinionInstance(CardInstance instance, Transform parent, bool isPlayer)
+    {
+        var go = Instantiate(_minionPrefab, parent);
+        var ui = go.GetComponent<CardUI>();
+        ui.SetupBattle(instance);
+        return ui;
+    }
+
+    /// <summary>
+    /// ƒл€ спелла на поле (если есть визуалка на поле).
+    /// </summary>
+    public CardUI CreateSpellInstance(CardInstance instance, Transform parent, bool isPlayer)
+    {
+        var go = Instantiate(_spellPrefab, parent);
+        var ui = go.GetComponent<CardUI>();
+        ui.SetupBattle(instance);
+        return ui;
+    }
 }

@@ -17,7 +17,7 @@ MonoBehaviour:
   type: 1
   maxHP: 20
   attack: 2
-  baseLoyalty: 6
-  ability: {fileID: 0}
-  loyaltyCost: 6
-  effects: []
+  baseDefense: 10
+  baseLoyalty: 2
+  loyaltyCost: 2
+  abilities: []

@@ -36,7 +36,6 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     private CardData _cardData;
     private CardInstance _cardInstance;
     private bool _isPlayerHand;
-    public bool IsEnemy { get; private set; }
 
     #endregion
 
@@ -101,7 +100,6 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         _cardData = data;
         _cardInstance = null;
         _isPlayerHand = isPlayer;
-        IsEnemy = !_isPlayerHand; 
 
         // Сохраняем LayoutElement и временно отключаем layout, чтобы анимация не дергалась
         var layoutElem = GetComponent<LayoutElement>();
@@ -122,7 +120,7 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 
         // Защита и HP (для рука, можно скрыть)
         _defenseText.text = data.baseDefense.ToString();
-        _hpText.text = data.baseHealth.ToString();
+        _hpText.text = data.maxHP.ToString();
 
         // Описание способностей
         if (_abilityDescText != null)
@@ -158,16 +156,14 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         _hpText.text = "";
         _abilityDescText.gameObject.SetActive(false);
         _highlightBorder.enabled = false;
-        IsEnemy = true;             
     }
 
     /// <summary>Настроить UI для карты на поле (битва).</summary>
-    public void SetupBattle(CardInstance instance, bool isPlayerSide)
+    public void SetupBattle(CardInstance instance)
     {
         _cardInstance = instance;
         _cardData = instance.cardData;
         _isPlayerHand = false;
-        IsEnemy = !isPlayerSide;
 
         // Арт и имя
         if (_artworkImage != null)
@@ -233,14 +229,13 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
             {
                 case CardType.Minion:
                     // ———————— Розыгрыш преданного ————————
-                    var minionInst = TurnManager.Instance.TryPlayCard(_cardData, isPlayer: true);
+                    var minionInst = TurnManager.Instance.TryPlayPlayerCard(_cardData);
                     if (minionInst == null)
                     {
                         Debug.LogWarning($"Not enough loyalty to play {_cardData.cardName}");
                         return;
                     }
                     HandManager.Instance.TryPlayCard(_cardData, true);
-                    UIManager.Instance.UpdateLoyaltyDisplay();
                     UIManager.Instance.PlacePlayedCard(minionInst, true);
                     GameManager.Instance.RecordPlayed(minionInst);
                     UIManager.Instance.RefreshHands();
@@ -259,7 +254,7 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 
                     // 2) Пробуем списать лояльность и применить OnPlay-пассивки
                     //    Используем тот же метод, что и для розыгрыша: он сразу вызовет ApplyCardEffect для OnPlay/Passive
-                    var spellInst = TurnManager.Instance.TryPlayCard(_cardData, isPlayer: true);
+                    var spellInst = TurnManager.Instance.TryPlayPlayerCard(_cardData);
                     if (spellInst == null)
                     {
                         Debug.LogWarning($"Not enough loyalty to cast {_cardData.cardName}");

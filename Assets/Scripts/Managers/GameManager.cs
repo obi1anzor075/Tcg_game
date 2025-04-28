@@ -1,7 +1,7 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using UnityEngine;
+using System.Collections;
 using System.Linq;
-using UnityEngine;
+using System.Collections.Generic;
 
 public class GameManager : MonoBehaviour
 {
@@ -9,20 +9,26 @@ public class GameManager : MonoBehaviour
 
     public GameState State { get; private set; }
 
-    // Список экземпляров карт, сыгранных в текущем раунде
+    // Список карт, сыгранных в текущем раунде
     private readonly List<CardInstance> _roundPlayed = new();
 
     [Header("Герои")]
-    [SerializeField] private CardData _chosenHeroData;
-    [SerializeField] private CardData _chosenAIHeroData;
+    [SerializeField] private CardData _chosenHeroData = null;
+    [SerializeField] private CardData _chosenAIHeroData = null;
 
-    [Header("Начальные миньоны")]
+    [Header("Начальное поле")]
     [SerializeField] private int _initialMinionCount = 3;
+
 
     private void Awake()
     {
-        if (Instance != null && Instance != this) Destroy(gameObject);
-        else { Instance = this; DontDestroyOnLoad(gameObject); }
+        if (Instance != null && Instance != this)
+            Destroy(gameObject);
+        else
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
     }
 
     private void Start()
@@ -32,47 +38,68 @@ public class GameManager : MonoBehaviour
 
     private IEnumerator RunGameLoop()
     {
-        // 1) Setup
+        // 1. Setup
         State = GameState.Setup;
         yield return StartCoroutine(Setup());
 
-        // 2) Основной цикл
+        // 2. Основной цикл ходов
         while (State != GameState.GameOver)
         {
             // --- Ход игрока ---
             State = GameState.PlayerTurn;
 
-            // 2.1 Начало хода игрока
-            TurnManager.Instance.StartTurn(isPlayer: true);
-            UIManager.Instance.UpdateLoyaltyDisplay();
+            // 2.1. Начало хода: сброс и восстановление лояльности
+            TurnManager.Instance.StartPlayerTurn();
 
-            // 2.2 Добор и UI руки
-            HandManager.Instance.DrawTurnCards(isPlayer: true);
+            // 2.2. Добор карты и обновление руки
+            HandManager.Instance.DrawTurnCards(true);
             UIManager.Instance.RefreshHands();
 
-            // 2.3 Ждём EndTurn
+            // 2.3. Ждём EndTurn
             yield return StartCoroutine(PlayerTurn());
 
-            // 2.4 Общая пост-ходовая логика для игрока
-            EndTurnCleanup(isPlayer: true);
+            // 2.4. После хода: перенос сыгранных карт в поле и очистка played-панели
+            TurnManager.Instance.RemoveCardsFromField(_roundPlayed);
+            UIManager.Instance.RefreshBattlefield();
+
+            // ── ВСТАВЛЯЕМ ФАЗУ АТАКИ ИГРОКА ──
+            AttackManager.Instance.ResolveAttackPhase(true);
+            UIManager.Instance.RefreshBattlefield();
+            // ──────────────────────────────────
+
+            UIManager.Instance.ClearPlayedAreas();
+            ClearRoundPlayed();
+
+            // 2.5. Проверка Game Over
             if (CheckGameOver()) break;
+
 
             // --- Ход ИИ ---
             State = GameState.EnemyTurn;
 
-            // 2.5 Начало хода ИИ
-            TurnManager.Instance.StartTurn(isPlayer: false);
-            // (можно выводить в HUD ИИ, но обычно скрыто)
+            // 2.6. Начало хода ИИ
+            TurnManager.Instance.StartEnemyTurn();
 
-            // 2.6 Добор и UI руки ИИ
-            HandManager.Instance.DrawTurnCards(isPlayer: false);
+            // 2.7. Добор карты ИИ и обновление руки
+            HandManager.Instance.DrawTurnCards(false);
             UIManager.Instance.RefreshHands();
 
-            // 2.7 Ход ИИ
+            // 2.8. Ход ИИ
             yield return StartCoroutine(EnemyTurn());
 
-            // 2.8 Общая пост-ходовая логика для ИИ
-            EndTurnCleanup(isPlayer: false);
+            // 2.9. После хода ИИ: перенос сыгранных карт и очистка played-панели
+            TurnManager.Instance.RemoveCardsFromField(_roundPlayed);
+            UIManager.Instance.RefreshBattlefield();
+
+            // ── ВСТАВЛЯЕМ ФАЗУ АТАКИ ИИ ──
+            AttackManager.Instance.ResolveAttackPhase(false);
+            UIManager.Instance.RefreshBattlefield();
+            // ─────────────────────────────
+
+            UIManager.Instance.ClearPlayedAreas();
+            ClearRoundPlayed();
+
+            // 2.10. Проверка Game Over
             if (CheckGameOver()) break;
         }
 
@@ -80,112 +107,109 @@ public class GameManager : MonoBehaviour
         HandleGameOver();
     }
 
+
     private IEnumerator Setup()
     {
-        // — Игрок —
-        // 1) Герой
-        TurnManager.Instance.AddPlayerCard(new CardInstance(_chosenHeroData));
+        // ---- Игрок ----
 
-        // 2) Начальные миньоны игрока
+        // 1. Добавляем героя игрока
+        var heroInst = new CardInstance(_chosenHeroData);
+        TurnManager.Instance.AddPlayerCard(heroInst);
+
+        // 2. Сразу выставляем _initialMinionCount верных игрока
         int added = 0;
-        for (int i = 0; i < _initialMinionCount; i++)
+        foreach (var minionData in HandManager.Instance.playerDeck
+                                        .Where(c => c.type == CardType.Minion)
+                                        .ToList())
         {
-            var mData = HandManager.Instance.DrawFirstMinionFromPlayerDeck();
-            if (mData == null) break;
-            TurnManager.Instance.AddPlayerCard(new CardInstance(mData));
+            if (added >= _initialMinionCount) break;
+            HandManager.Instance.playerDeck.Remove(minionData);
+            TurnManager.Instance.AddPlayerCard(new CardInstance(minionData));
             added++;
         }
 
-        // — ИИ —
-        // 3) Герой ИИ
-        TurnManager.Instance.AddEnemyCard(new CardInstance(_chosenAIHeroData));
+        // ---- ИИ ----
 
-        // 4) Начальные миньоны ИИ
+        // 3. Добавляем героя ИИ
+        var aiHeroInst = new CardInstance(_chosenAIHeroData);
+        TurnManager.Instance.AddEnemyCard(aiHeroInst);
+
+        // 4. Сразу выставляем _initialMinionCount верных ИИ
         int aiAdded = 0;
-        for (int i = 0; i < _initialMinionCount; i++)
+        foreach (var minionData in HandManager.Instance.enemyDeck
+                                        .Where(c => c.type == CardType.Minion)
+                                        .ToList())
         {
-            var mData = HandManager.Instance.DrawFirstMinionFromEnemyDeck();
-            if (mData == null) break;
-            TurnManager.Instance.AddEnemyCard(new CardInstance(mData));
+            if (aiAdded >= _initialMinionCount) break;
+            HandManager.Instance.enemyDeck.Remove(minionData);
+            TurnManager.Instance.AddEnemyCard(new CardInstance(minionData));
             aiAdded++;
         }
 
-        // 5) Первичный UI поля
+        // 5. Рисуем поле (герои + начальные верные обеих сторон)
         UIManager.Instance.RefreshBattlefield();
 
-        // 6) Раздача стартовых рук
+        // 6. Раздаём стартовые руки
         HandManager.Instance.DealStartHands();
         UIManager.Instance.RefreshHands();
 
-        // 7) Задаём преданность перед первым ходом
-        TurnManager.Instance.StartTurn(isPlayer: true);
-        UIManager.Instance.UpdateLoyaltyDisplay();
-
-        Debug.Log($"Setup complete: Player minions={added}, AI minions={aiAdded}, Player hand={HandManager.Instance.playerHand.Count}");
+        Debug.Log($"Game Setup complete:\n" +
+                  $"- Player: Hero + {added} minions\n" +
+                  $"- AI: Hero + {aiAdded} minions\n" +
+                  $"- Player hand: {HandManager.Instance.playerHand.Count} cards");
         yield return null;
     }
+
 
     private IEnumerator PlayerTurn()
     {
         Debug.Log("Player's Turn");
+        // Ждём, пока игрок нажмёт кнопку EndTurn
         bool ended = false;
         UIManager.Instance.OnEndTurnClicked += () => ended = true;
-        while (!ended) yield return null;
+        while (!ended)
+            yield return null;
         UIManager.Instance.OnEndTurnClicked -= () => ended = true;
     }
 
     private IEnumerator EnemyTurn()
     {
         Debug.Log("Enemy's Turn");
+        // Вызываем ИИ
         AIManager.Instance.PlayTurn();
+        // Подождать пару секунд, чтобы показать ходы врага
         yield return new WaitForSeconds(1f);
-    }
-
-    /// <summary>
-    /// Общая логика после хода: 
-    /// перенос карт, фаза атаки, очистка played-панели.
-    /// </summary>
-    private void EndTurnCleanup(bool isPlayer)
-    {
-        // Переносим сыгранные в постоянное поле
-        TurnManager.Instance.RemoveCardsFromField(_roundPlayed);
-
-        // Обновляем и показываем поле
-        UIManager.Instance.RefreshBattlefield();
-
-        // Фаза атаки
-        AttackManager.Instance.ResolveAttackPhase(isPlayer);
-
-        // Ещё раз обновляем поле после атак
-        UIManager.Instance.RefreshBattlefield();
-
-        // Очищаем панель сыгранных карт
-        UIManager.Instance.ClearPlayedAreas();
-
-        // Очищаем внутренний список
-        ClearRoundPlayed();
     }
 
     private bool CheckGameOver()
     {
-        bool pDead = TurnManager.Instance.PlayerCards
-            .Any(c => c.cardData.type == CardType.Hero && !c.IsAlive);
-        bool eDead = TurnManager.Instance.EnemyCards
+        // Если хотя бы один герой убит
+        bool playerHeroDead = TurnManager.Instance.PlayerCards
             .Any(c => c.cardData.type == CardType.Hero && !c.IsAlive);
 
-        bool allPM = TurnManager.Instance.PlayerCards
-            .Where(c => c.cardData.type == CardType.Minion).All(c => !c.IsAlive);
-        bool allEM = TurnManager.Instance.EnemyCards
-            .Where(c => c.cardData.type == CardType.Minion).All(c => !c.IsAlive);
+        bool enemyHeroDead = TurnManager.Instance.EnemyCards
+            .Any(c => c.cardData.type == CardType.Hero && !c.IsAlive);
 
-        return (pDead && allPM) || (eDead && allEM);
+        // Или если все герои игрока мертвы
+        bool allPlayerMinionsDead = TurnManager.Instance.PlayerCards
+            .Where(c => c.cardData.type == CardType.Minion)
+            .All(c => !c.IsAlive);
+
+        // Или если все герои врага мертвы
+        bool allEnemyMinionsDead = TurnManager.Instance.EnemyCards
+            .Where(c => c.cardData.type == CardType.Minion)
+            .All(c => !c.IsAlive);
+
+        return (playerHeroDead  && allPlayerMinionsDead) || (enemyHeroDead && allEnemyMinionsDead);
     }
 
+    /// <summary>Сохраняет экземпляр сыгранной карты текущего раунда.</summary>
     public void RecordPlayed(CardInstance inst)
     {
         _roundPlayed.Add(inst);
     }
 
+    /// <summary>Очищает список сыгранных за раунд карт.</summary>
     public void ClearRoundPlayed()
     {
         _roundPlayed.Clear();
@@ -194,6 +218,7 @@ public class GameManager : MonoBehaviour
     private void HandleGameOver()
     {
         Debug.Log("Game Over!");
-        // Тут можно вызвать UIManager.ShowGameOver(...)
+        // TODO: показать экран победы/поражения
     }
+
 }
