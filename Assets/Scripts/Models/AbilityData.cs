@@ -7,7 +7,9 @@ public class AbilityData : ScriptableObject
     [TextArea] public string description;
 
     public AbilityTrigger trigger;      // когда срабатывает
+    public TargetType targetType;      
     public bool isPriorityTarget;       // для пассивной-способности «приоритет»(если это приоритетная цель)
+
 
     // Список эффектов, которые нужно применить
     public EffectData[] effects;

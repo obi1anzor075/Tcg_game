@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -29,51 +30,39 @@ public class AIManager : MonoBehaviour
     /// </summary>
     public void PlayTurn()
     {
-        // 1. Начало хода ИИ: сброс и восстановление лояльности
-        TurnManager.Instance.StartEnemyTurn();
-        int totalLoyalty = TurnManager.Instance.TotalEnemyLoyalty;
-        Debug.Log($"[AIManager] AI start turn. Total Loyalty = {totalLoyalty}");
+        TurnManager.Instance.StartTurn(false);
+        int loyalty = TurnManager.Instance.EnemyLoyalty;
+        var hand = HandManager.Instance.enemyHand.ToList();
 
-        // 2. Копируем руку, чтобы безопасно итерироваться и модифицировать её
-        var handCopy = HandManager.Instance.enemyHand.ToList();
-
-        // 3. Разыгрываем миньонов
-        foreach (var cardData in handCopy.Where(c => c.type == CardType.Minion).ToList())
-        {
-            if (cardData.baseLoyalty <= totalLoyalty)
-            {
-                var inst = TurnManager.Instance.TryPlayEnemyCard(cardData);
-                if (inst != null)
-                {
-                    totalLoyalty -= cardData.baseLoyalty;
-                    HandManager.Instance.enemyHand.Remove(cardData);
-                    UIManager.Instance.PlacePlayedCard(inst, false);
-                    GameManager.Instance.RecordPlayed(inst);
-                    Debug.Log($"[AIManager] AI played minion {cardData.cardName}");
-                }
-            }
-        }
-
-        // 4. Разыгрываем спеллы и способности
-        foreach (var cardData in handCopy.Where(c => c.type == CardType.Spell || c.type == CardType.HeroAbility).ToList())
-        {
-            if (cardData.loyaltyCost <= totalLoyalty)
-            {
-                // способности могут требовать таргетинга, но для простоты применяем без таргета
-                var inst = TurnManager.Instance.TryPlayEnemyCard(cardData);
-                if (inst != null)
-                {
-                    totalLoyalty -= cardData.loyaltyCost;
-                    HandManager.Instance.enemyHand.Remove(cardData);
-                    UIManager.Instance.PlacePlayedCard(inst, false);
-                    GameManager.Instance.RecordPlayed(inst);
-                    Debug.Log($"[AIManager] AI played spell/ability {cardData.cardName}");
-                }
-            }
-        }
-
-        Debug.Log("[AIManager] AI end turn.");
+        // обобщённый метод
+        TryPlayAllOfType(hand, CardType.Minion, loyalty, c => c.baseLoyalty);
+        TryPlayAllOfType(hand, CardType.Spell, loyalty, c => c.loyaltyCost);
+        TryPlayAllOfType(hand, CardType.HeroAbility, loyalty, c => c.loyaltyCost);
     }
+
+    private void TryPlayAllOfType(
+          List<CardData> handCopy,
+          CardType type,
+          int currentLoyalty,
+          Func<CardData, int> costSelector)
+    {
+        foreach (var card in handCopy.Where(c => c.type == type).ToList())
+        {
+            int cost = costSelector(card);
+            if (cost <= currentLoyalty)
+            {
+                var inst = TurnManager.Instance.TryPlayCard(card, isPlayer:false);
+                if (inst != null)
+                {
+                    currentLoyalty -= cost;
+                    HandManager.Instance.enemyHand.Remove(card);
+                    UIManager.Instance.PlacePlayedCard(inst, false);
+                    GameManager.Instance.RecordPlayed(inst);
+                }
+            }
+        }
+    }
+
 
     #endregion
 }
