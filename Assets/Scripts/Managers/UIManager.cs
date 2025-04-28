@@ -32,18 +32,22 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Transform _enemyHeroArea;
     [SerializeField] private Transform _enemyMinionsArea;
 
+    [Header("Enemy Hand Back")]
+    [SerializeField] private GameObject _cardBackPrefab;
+
     [Header("Played Cards Area")]
-    [SerializeField] private Transform _playedCardsArea;
+    [SerializeField] private Transform _playerPlayedArea;
+    [SerializeField] private Transform _enemyPlayedArea;
 
     #endregion
 
     #region State
 
     private bool _isTargeting = false;
-    private CardData _currentEffectCard = null;
+    private AbilityData _currentEffectAbility = null; 
 
     public bool IsTargeting => _isTargeting;
-    public CardData CurrentEffectCard => _currentEffectCard;
+    public AbilityData CurrentEffectAbility => _currentEffectAbility; 
 
     #endregion
 
@@ -76,21 +80,12 @@ public class UIManager : MonoBehaviour
     {
         foreach (Transform t in _playerHandArea) Destroy(t.gameObject);
         foreach (var data in HandManager.Instance.playerHand)
-        {
-            if (data.type == CardType.Minion)
-                CardFactory.Instance.CreateMinion(data, _playerHandArea, true, true);
-            else
-                CardFactory.Instance.CreateSpell(data, _playerHandArea, true, true);
-        }
+            CardFactory.Instance.CreateMinion(data, _playerHandArea, true, true);
 
         foreach (Transform t in _enemyHandArea) Destroy(t.gameObject);
-        foreach (var data in HandManager.Instance.enemyHand)
-        {
-            var ui = (data.type == CardType.Minion)
-                ? CardFactory.Instance.CreateMinion(data, _enemyHandArea, true, false)
-                : CardFactory.Instance.CreateSpell(data, _enemyHandArea, true, false);
-            ui.SetupBack();
-        }
+        int cnt = HandManager.Instance.enemyHand.Count;
+        for (int i = 0; i < cnt; i++)
+            Instantiate(_cardBackPrefab, _enemyHandArea);
     }
 
     /// <summary>
@@ -98,64 +93,62 @@ public class UIManager : MonoBehaviour
     /// </summary>
     public void RefreshBattlefield()
     {
-        // Игрок
         foreach (Transform t in _playerHeroArea) Destroy(t.gameObject);
         foreach (Transform t in _playerMinionsArea) Destroy(t.gameObject);
 
-        // Герой игрока
         var playerHero = TurnManager.Instance.PlayerCards
             .FirstOrDefault(c => c.cardData.type == CardType.Hero);
         if (playerHero != null)
             CardFactory.Instance.CreateHeroOnField(playerHero.cardData, _playerHeroArea);
 
-        // Верные игрока
         var playerMinions = TurnManager.Instance.PlayerCards
             .Where(c => c.cardData.type == CardType.Minion);
         foreach (var inst in playerMinions)
-            CardFactory.Instance.CreateMinion(inst.cardData, _playerMinionsArea, false, true);
+            CardFactory.Instance.CreateMinionInstance(inst, _playerMinionsArea, true);
 
-        // Противник
         foreach (Transform t in _enemyHeroArea) Destroy(t.gameObject);
         foreach (Transform t in _enemyMinionsArea) Destroy(t.gameObject);
 
-        // Герой противника
         var enemyHero = TurnManager.Instance.EnemyCards
             .FirstOrDefault(c => c.cardData.type == CardType.Hero);
         if (enemyHero != null)
             CardFactory.Instance.CreateHeroOnField(enemyHero.cardData, _enemyHeroArea);
 
-        // Верные противника
         var enemyMinions = TurnManager.Instance.EnemyCards
             .Where(c => c.cardData.type == CardType.Minion);
         foreach (var inst in enemyMinions)
-            CardFactory.Instance.CreateMinion(inst.cardData, _enemyMinionsArea, false, false);
-    }
-
-    /// <summary>Показать карту, сыгранную из руки, в зоне PlayedCardsPanel.</summary>
-    public void PlacePlayedCard(CardInstance instance, bool isPlayer)
-    {
-        if (instance.cardData.type == CardType.Minion || instance.cardData.type == CardType.Spell)
-            CardFactory.Instance.CreateMinion(instance.cardData, _playedCardsArea, false, isPlayer);
-        else
-            CardFactory.Instance.CreateSpell(instance.cardData, _playedCardsArea, false, isPlayer);
+            CardFactory.Instance.CreateMinionInstance(inst, _enemyMinionsArea, false);
     }
 
     /// <summary>
-    /// Очищает панель сыгранных карт.
+    /// Показать сыгранную карту в своей панели.
     /// </summary>
-    public void ClearPlayedArea()
+    public void PlacePlayedCard(CardInstance instance, bool isPlayer)
     {
-        foreach (Transform t in _playedCardsArea)
-            Destroy(t.gameObject);
+        var targetArea = isPlayer
+            ? _playerPlayedArea
+            : _enemyPlayedArea;
+
+        if (instance.cardData.type == CardType.Minion)
+            CardFactory.Instance.CreateMinionInstance(instance, targetArea, isPlayer);
+        else
+            CardFactory.Instance.CreateSpellInstance(instance, targetArea, isPlayer);
+    }
+
+    public void ClearPlayedAreas()
+    {
+        foreach (Transform t in _playerPlayedArea) Destroy(t.gameObject);
+        foreach (Transform t in _enemyPlayedArea) Destroy(t.gameObject);
     }
 
     /// <summary>
     /// Входит в режим таргетинга: все карты подсвечиваются.
     /// </summary>
-    public void BeginTargetMode(CardData effectCard)
+    public void BeginTargetMode(AbilityData effectAbility)
     {
         _isTargeting = true;
-        _currentEffectCard = effectCard;
+        _currentEffectAbility = effectAbility;
+        EffectProcessor.Instance.BeginTargeting(effectAbility);
         HighlightAll(true);
     }
 
@@ -165,7 +158,7 @@ public class UIManager : MonoBehaviour
     public void EndTargetMode()
     {
         _isTargeting = false;
-        _currentEffectCard = null;
+        _currentEffectAbility = null;
         HighlightAll(false);
     }
 

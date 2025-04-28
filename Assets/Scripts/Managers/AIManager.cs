@@ -1,67 +1,81 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
+#region Manager: AIManager
+
+/// <summary>
+/// Управляет логикой хода ИИ: сброс и расчёт преданности, 
+/// последующий розыгрыш миньонов и способностей из руки.
+/// </summary>
 public class AIManager : MonoBehaviour
 {
+    #region Singleton
+
     public static AIManager Instance { get; private set; }
 
     private void Awake()
     {
-        if (Instance != null && Instance != this)
-            Destroy(gameObject);
-        else
-        {
-            Instance = this;
-            DontDestroyOnLoad(gameObject);
-        }
+        if (Instance != null && Instance != this) Destroy(gameObject);
+        else { Instance = this; DontDestroyOnLoad(gameObject); }
     }
 
+    #endregion
+
+    #region Public API
+
     /// <summary>
-    /// Логика хода ИИ: набираем лояльность, затем раскидываем доступные карты/способности.
+    /// Выполняет ход ИИ: обновляет ресурс, пробует сыграть миньоны, затем спеллы.
     /// </summary>
     public void PlayTurn()
     {
-        // 1. Рассчитываем ресурс лояльности ИИ
-        int totalLoyalty = 0;
-        foreach (var card in TurnManager.Instance.EnemyCards)
-        {
-            // Сбрасываем loyalty к базовому
-            card.ResetLoyalty();
-            if (card.currentLoyalty > 0)
-                totalLoyalty += card.currentLoyalty;
-        }
-        Debug.Log($"AI start turn. Total Loyalty = {totalLoyalty}");
+        // 1. Начало хода ИИ: сброс и восстановление лояльности
+        TurnManager.Instance.StartEnemyTurn();
+        int totalLoyalty = TurnManager.Instance.TotalEnemyLoyalty;
+        Debug.Log($"[AIManager] AI start turn. Total Loyalty = {totalLoyalty}");
 
-        // 2. Пробуем разыграть миньонов из руки (или способности)
-        //    Здесь предполагаем, что у ИИ есть список CardData в руке — добавьте свой менеджер руки, если нужно.
-        List<CardData> hand = HandManager.Instance.enemyHand;
+        // 2. Копируем руку, чтобы безопасно итерироваться и модифицировать её
+        var handCopy = HandManager.Instance.enemyHand.ToList();
 
-        // Сначала раскидываем всех миньонов, которых можем
-        foreach (var cardData in new List<CardData>(hand))
+        // 3. Разыгрываем миньонов
+        foreach (var cardData in handCopy.Where(c => c.type == CardType.Minion).ToList())
         {
-            if (cardData.type == CardType.Minion &&
-                cardData.baseLoyalty <= totalLoyalty)
+            if (cardData.baseLoyalty <= totalLoyalty)
             {
-                TurnManager.Instance.TryPlayCard(cardData);
-                totalLoyalty -= cardData.baseLoyalty;
-                hand.Remove(cardData);
-                Debug.Log($"AI played minion {cardData.cardName}");
+                var inst = TurnManager.Instance.TryPlayEnemyCard(cardData);
+                if (inst != null)
+                {
+                    totalLoyalty -= cardData.baseLoyalty;
+                    HandManager.Instance.enemyHand.Remove(cardData);
+                    UIManager.Instance.PlacePlayedCard(inst, false);
+                    GameManager.Instance.RecordPlayed(inst);
+                    Debug.Log($"[AIManager] AI played minion {cardData.cardName}");
+                }
             }
         }
 
-        // Потом способности/спеллы
-        foreach (var cardData in new List<CardData>(hand))
+        // 4. Разыгрываем спеллы и способности
+        foreach (var cardData in handCopy.Where(c => c.type == CardType.Spell || c.type == CardType.HeroAbility).ToList())
         {
-            if ((cardData.type == CardType.Spell || cardData.type == CardType.HeroAbility) &&
-                cardData.loyaltyCost <= totalLoyalty)
+            if (cardData.loyaltyCost <= totalLoyalty)
             {
-                TurnManager.Instance.TryPlayCard(cardData);
-                totalLoyalty -= cardData.loyaltyCost;
-                hand.Remove(cardData);
-                Debug.Log($"AI used ability {cardData.cardName}");
+                // способности могут требовать таргетинга, но для простоты применяем без таргета
+                var inst = TurnManager.Instance.TryPlayEnemyCard(cardData);
+                if (inst != null)
+                {
+                    totalLoyalty -= cardData.loyaltyCost;
+                    HandManager.Instance.enemyHand.Remove(cardData);
+                    UIManager.Instance.PlacePlayedCard(inst, false);
+                    GameManager.Instance.RecordPlayed(inst);
+                    Debug.Log($"[AIManager] AI played spell/ability {cardData.cardName}");
+                }
             }
         }
 
-        Debug.Log("AI end turn.");
+        Debug.Log("[AIManager] AI end turn.");
     }
+
+    #endregion
 }
+
+#endregion

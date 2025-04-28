@@ -1,17 +1,33 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.EventSystems;
+using DG.Tweening;
 
-[RequireComponent(typeof(Button))]
-public class CardUI : MonoBehaviour
+[RequireComponent(typeof(Button), typeof(LayoutElement))]
+public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 {
+    #region Animation Settings
+
+    [Header("Hover Animation")]
+    [SerializeField] private float _hoverY = 10f;
+    [SerializeField] private float _scale = 1.05f;
+    [SerializeField] private float _dur = 0.15f;
+    [SerializeField] private RectTransform _visual;
+
+    private Vector3 _startPos, _startScale;
+
+    #endregion
+
     #region Inspector Fields
 
     [SerializeField] private Image _artworkImage;
     [SerializeField] private TMP_Text _nameText;
-    [SerializeField] private TMP_Text _loyaltyText;      // может быть не задан
-    [SerializeField] private TMP_Text _hpText;           // может быть не задан
-    [SerializeField] private TMP_Text _abilityDescText;  // может быть не задан
+    [SerializeField] private TMP_Text _loyaltyText;
+    [SerializeField] private TMP_Text _defenseText;
+    [SerializeField] private TMP_Text _hpText;
+    [SerializeField] private TMP_Text _abilityDescText;
+    [SerializeField] private Image _highlightBorder;
 
     #endregion
 
@@ -23,33 +39,96 @@ public class CardUI : MonoBehaviour
 
     #endregion
 
+    #region Unity
+
+    private void Awake()
+    {
+        if (_visual == null)
+            _visual = GetComponent<RectTransform>();
+        _startPos = _visual.localPosition;
+        _startScale = _visual.localScale;
+    }
+
+    #endregion
+
+    #region Hover Handlers
+
+    private void OnDisable()
+    {
+        // Гарантированно убиваем любые твины, привязанные к visual или этому объекту
+        if (_visual != null) _visual.DOKill();
+        transform.DOKill();
+    }
+
+    public void OnPointerEnter(PointerEventData e)
+    {
+        if (!_isPlayerHand) return;
+
+        _visual.DOKill();
+        transform.DOKill();
+
+        _visual
+            .DOLocalMoveY(_startPos.y + _hoverY, _dur)
+            .SetEase(Ease.OutQuad);
+        transform
+            .DOScale(_startScale * _scale, _dur)
+            .SetEase(Ease.OutQuad);
+    }
+
+    public void OnPointerExit(PointerEventData e)
+    {
+        if (!_isPlayerHand) return;
+
+        _visual.DOKill();
+        transform.DOKill();
+
+        _visual
+            .DOLocalMove(_startPos, _dur)
+            .SetEase(Ease.OutQuad);
+        transform
+            .DOScale(_startScale, _dur)
+            .SetEase(Ease.OutQuad);
+    }
+
+    #endregion
+
     #region Public API
 
-    /// <summary>
-    /// Настроить UI для карты в руке.
-    /// </summary>
+    /// <summary>Настроить UI для карты в руке.</summary>
     public void Setup(CardData data, bool isPlayer)
     {
         _cardData = data;
         _cardInstance = null;
         _isPlayerHand = isPlayer;
 
+        // Сохраняем LayoutElement и временно отключаем layout, чтобы анимация не дергалась
+        var layoutElem = GetComponent<LayoutElement>();
+        if (layoutElem != null) layoutElem.ignoreLayout = false;
+
         // Арт и имя
-        if (_artworkImage != null) _artworkImage.sprite = data.artwork;
-        if (_nameText != null) _nameText.text = data.cardName;
+        _artworkImage?.gameObject.SetActive(true);
+        _artworkImage.sprite = data.artwork;
+        _nameText.text = data.cardName;
 
-        // Лояльность
-        if (_loyaltyText != null) _loyaltyText.text = data.baseLoyalty.ToString();
+        // Преданность/стоимость
+        if (_loyaltyText != null)
+        {
+            _loyaltyText.text = (data.type == CardType.Minion)
+                ? data.baseLoyalty.ToString()
+                : data.loyaltyCost.ToString();
+        }
 
-        // HP
-        if (_hpText != null) _hpText.text = data.maxHP.ToString();
+        // Защита и HP (для рука, можно скрыть)
+        _defenseText.text = data.baseDefense.ToString();
+        _hpText.text = data.maxHP.ToString();
 
-        // Описание способности
+        // Описание способностей
         if (_abilityDescText != null)
         {
-            if (data.ability != null)
+            if (data.abilities != null && data.abilities.Length > 0)
             {
-                _abilityDescText.text = data.ability.description;
+                // просто берем описание первой способности
+                _abilityDescText.text = data.abilities[0].description;
                 _abilityDescText.gameObject.SetActive(true);
             }
             else
@@ -58,28 +137,28 @@ public class CardUI : MonoBehaviour
             }
         }
 
-        // Настройка клика
+        // Скрыть подсветку
+        if (_highlightBorder != null) _highlightBorder.enabled = false;
+
+        // Подписываем клик
         var btn = GetComponent<Button>();
         btn.onClick.RemoveAllListeners();
         btn.onClick.AddListener(OnClicked);
-
     }
 
-    /// <summary>
-    /// Показать рубашку карты (для ИИ).
-    /// </summary>
+    /// <summary>Показать рубашку карты (для ИИ).</summary>
     public void SetupBack()
     {
-        if (_artworkImage != null) _artworkImage.gameObject.SetActive(false);
-        if (_nameText != null) _nameText.text = "";
-        if (_loyaltyText != null) _loyaltyText.text = "";
-        if (_hpText != null) _hpText.text = "";
-        if (_abilityDescText != null) _abilityDescText.gameObject.SetActive(false);
+        _artworkImage?.gameObject.SetActive(false);
+        _nameText.text = "";
+        _loyaltyText.text = "";
+        _defenseText.text = "";
+        _hpText.text = "";
+        _abilityDescText.gameObject.SetActive(false);
+        _highlightBorder.enabled = false;
     }
 
-    /// <summary>
-    /// Настроить UI для карты на поле (битва).
-    /// </summary>
+    /// <summary>Настроить UI для карты на поле (битва).</summary>
     public void SetupBattle(CardInstance instance)
     {
         _cardInstance = instance;
@@ -87,21 +166,32 @@ public class CardUI : MonoBehaviour
         _isPlayerHand = false;
 
         // Арт и имя
-        if (_artworkImage != null) _artworkImage.sprite = _cardData.artwork;
-        if (_nameText != null) _nameText.text = _cardData.cardName;
+        if (_artworkImage != null)
+        {
+            _artworkImage.gameObject.SetActive(true);
+            _artworkImage.sprite = _cardData.artwork;
+        }
+        if (_nameText != null)
+            _nameText.text = _cardData.cardName;
 
         // Лояльность
-        if (_loyaltyText != null) _loyaltyText.text = instance.currentLoyalty.ToString();
+        if (_loyaltyText != null)
+            _loyaltyText.text = instance.currentLoyalty.ToString();
+
+        // Защита
+        if (_defenseText != null)
+            _defenseText.text = instance.CurrentDefense.ToString();
 
         // HP
-        if (_hpText != null) _hpText.text = instance.currentHP.ToString();
+        if (_hpText != null)
+            _hpText.text = instance.currentHP.ToString();
 
-        // Описание способности
+        // Описание способности (берем первую, если есть)
         if (_abilityDescText != null)
         {
-            if (_cardData.ability != null)
+            if (_cardData.abilities != null && _cardData.abilities.Length > 0)
             {
-                _abilityDescText.text = _cardData.ability.description;
+                _abilityDescText.text = _cardData.abilities[0].description;
                 _abilityDescText.gameObject.SetActive(true);
             }
             else
@@ -110,19 +200,21 @@ public class CardUI : MonoBehaviour
             }
         }
 
-        // Настройка клика
+        // Подсветка
+        if (_highlightBorder != null)
+            _highlightBorder.enabled = false;
+
+        // Клик
         var btn = GetComponent<Button>();
         btn.onClick.RemoveAllListeners();
         btn.onClick.AddListener(OnClicked);
-
     }
 
-    /// <summary>
-    /// Включить/выключить подсветку карты (если есть граница).
-    /// </summary>
+    /// <summary>Включить/выключить подсветку карты.</summary>
     public void SetHighlight(bool highlight)
     {
-
+        if (_highlightBorder != null)
+            _highlightBorder.enabled = highlight;
     }
 
     #endregion
@@ -133,41 +225,65 @@ public class CardUI : MonoBehaviour
     {
         if (_isPlayerHand)
         {
-            // 1. Определяем стоимость
-            int cost = (_cardData.type == CardType.Minion)
-                ? _cardData.baseLoyalty
-                : _cardData.loyaltyCost;
-
-            // 2. Проверяем и списываем преданность
-            if (!TurnManager.Instance.TrySpendLoyalty(cost))
+            switch (_cardData.type)
             {
-                Debug.LogWarning("Not enough loyalty to play " + _cardData.cardName);
-                return;
+                case CardType.Minion:
+                    // ———————— Розыгрыш преданного ————————
+                    var minionInst = TurnManager.Instance.TryPlayPlayerCard(_cardData);
+                    if (minionInst == null)
+                    {
+                        Debug.LogWarning($"Not enough loyalty to play {_cardData.cardName}");
+                        return;
+                    }
+                    HandManager.Instance.TryPlayCard(_cardData, true);
+                    UIManager.Instance.PlacePlayedCard(minionInst, true);
+                    GameManager.Instance.RecordPlayed(minionInst);
+                    UIManager.Instance.RefreshHands();
+                    break;
+
+                case CardType.Spell:
+                case CardType.HeroAbility:
+                    // ———————— Розыгрыш спелла/геро. способности ————————
+                    // 1) Берём первую AbilityData
+                    if (_cardData.abilities == null || _cardData.abilities.Length == 0)
+                    {
+                        Debug.LogWarning($"No abilities assigned to {_cardData.cardName}");
+                        return;
+                    }
+                    var ability = _cardData.abilities[0];
+
+                    // 2) Пробуем списать лояльность и применить OnPlay-пассивки
+                    //    Используем тот же метод, что и для розыгрыша: он сразу вызовет ApplyCardEffect для OnPlay/Passive
+                    var spellInst = TurnManager.Instance.TryPlayPlayerCard(_cardData);
+                    if (spellInst == null)
+                    {
+                        Debug.LogWarning($"Not enough loyalty to cast {_cardData.cardName}");
+                        return;
+                    }
+
+                    // 3) Удаляем карту из руки
+                    HandManager.Instance.TryPlayCard(_cardData, true);
+
+                    // 4) Обновляем UI руки
+                    UIManager.Instance.RefreshHands();
+
+                    // 5) Входим в режим таргетинга для выбранной способности
+                    UIManager.Instance.BeginTargetMode(ability);
+                    break;
+
+                case CardType.Hero:
+                    // героя из руки не играем
+                    break;
             }
-
-            // 3. Убираем карту из руки
-            if (!HandManager.Instance.TryPlayCard(_cardData, true))
-                return;
-
-            // 4. Создаём временный экземпляр и показываем в панели сыгранных
-            var inst = new CardInstance(_cardData);
-            UIManager.Instance.PlacePlayedCard(inst, true);
-
-            // 5. Запоминаем, чтобы потом «убить» её
-            GameManager.Instance.RecordPlayed(inst);
-
-            // 6. Обновляем UI руки
-            UIManager.Instance.RefreshHands();
         }
         else if (UIManager.Instance.IsTargeting && _cardInstance != null)
         {
-            // таргетинг способностей
-            EffectProcessor.Instance.ApplyEffectTo(_cardInstance, UIManager.Instance.CurrentEffectCard);
+            // ———————— Применение спелла к цели ————————
+            EffectProcessor.Instance.ApplyEffectTo(_cardInstance);
             UIManager.Instance.EndTargetMode();
             UIManager.Instance.RefreshBattlefield();
         }
     }
-
 
     #endregion
 }

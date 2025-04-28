@@ -1,21 +1,14 @@
 using UnityEngine;
 
-[CreateAssetMenu(fileName = "NewAbility", menuName = "TCG/Ability")]
+[CreateAssetMenu(menuName = "Cards/Ability")]
 public class AbilityData : ScriptableObject
 {
     public string abilityName;
     [TextArea] public string description;
 
-    // эффекты
-    public int damage;
-    public int heal;
+    public AbilityTrigger trigger;      // когда срабатывает
+    public bool isPriorityTarget;       // для пассивной-способности «приоритет»(если это приоритетная цель)
 
-    // изменение верности
-    [Tooltip("На сколько увеличивается (плюс) или уменьшается (минус) верность цели")]
-    public int loyaltyDelta;
-
-    [Tooltip("Если true — эффект loyaltyDelta применяется каждый ход, иначе один раз при активации способности")]
-    public bool loyaltyPerTurn;
-
-    public bool isPriorityTarget; // приоритет
+    // Список эффектов, которые нужно применить
+    public EffectData[] effects;
 }

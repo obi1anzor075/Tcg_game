@@ -1,10 +1,11 @@
-using System.Collections.Generic;
+п»їusing System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 #region Manager: TurnManager
 
 /// <summary>
-/// Отвечает за ресурс "лояльность", розыгрыш карт и хранение карт на поле.
+/// РћС‚РІРµС‡Р°РµС‚ Р·Р° "РїСЂРµРґР°РЅРЅРѕСЃС‚СЊ", СЂРѕР·С‹РіСЂС‹С€ РєР°СЂС‚ Рё С…СЂР°РЅРµРЅРёРµ РєР°СЂС‚ РЅР° РїРѕР»Рµ.
 /// </summary>
 public class TurnManager : MonoBehaviour
 {
@@ -19,7 +20,6 @@ public class TurnManager : MonoBehaviour
             Destroy(gameObject);
             return;
         }
-
         Instance = this;
         DontDestroyOnLoad(gameObject);
     }
@@ -28,103 +28,116 @@ public class TurnManager : MonoBehaviour
 
     #region Fields
 
-    [Header("Карты на поле")]
+    [Header("РљР°СЂС‚С‹ РЅР° РїРѕР»Рµ")]
     [SerializeField] private List<CardInstance> _playerCards = new();
     [SerializeField] private List<CardInstance> _enemyCards = new();
 
     private int _totalPlayerLoyalty;
+    private int _totalEnemyLoyalty;
 
     #endregion
 
     #region Properties
 
-    /// <summary>Список карт игрока на поле.</summary>
+    /// <summary>РљРѕРїРёРё СЃРїРёСЃРєР° РєР°СЂС‚ РёРіСЂРѕРєР° (readonly).</summary>
     public IReadOnlyList<CardInstance> PlayerCards => _playerCards;
-
-    /// <summary>Список карт ИИ на поле.</summary>
+    /// <summary>РљРѕРїРёРё СЃРїРёСЃРєР° РєР°СЂС‚ РР (readonly).</summary>
     public IReadOnlyList<CardInstance> EnemyCards => _enemyCards;
-
-    /// <summary>Текущий ресурс лояльности игрока.</summary>
+    /// <summary>РўРµРєСѓС‰РёР№ СЂРµСЃСѓСЂСЃ Р»РѕСЏР»СЊРЅРѕСЃС‚Рё РёРіСЂРѕРєР°.</summary>
     public int TotalPlayerLoyalty => _totalPlayerLoyalty;
+    /// <summary>РўРµРєСѓС‰РёР№ СЂРµСЃСѓСЂСЃ Р»РѕСЏР»СЊРЅРѕСЃС‚Рё РР.</summary>
+    public int TotalEnemyLoyalty => _totalEnemyLoyalty;
 
     #endregion
 
-    #region Public Methods
+    #region Turn Management
 
-    /// <summary>
-    /// Начало хода: сбрасывает и суммирует лояльность у всех карт игрока.
-    /// </summary>
-    public void StartTurn()
+    /// <summary>РќР°С‡Р°Р»Рѕ С…РѕРґР° РёРіСЂРѕРєР°: СЃР±СЂРѕСЃ Рё СЃСѓРјРјРёСЂРѕРІР°РЅРёРµ Р»РѕСЏР»СЊРЅРѕСЃС‚Рё.</summary>
+    public void StartPlayerTurn()
     {
-        _totalPlayerLoyalty = 0;
-
-        foreach (var card in _playerCards)
-        {
-            // сброс и получение лояльности из каждой карты
-            card.ResetLoyalty();
-            if (card.currentLoyalty > 0)
-                _totalPlayerLoyalty += card.currentLoyalty;
-        }
-
-        Debug.Log($"[TurnManager] New turn. Total Loyalty = {_totalPlayerLoyalty}");
+        _totalPlayerLoyalty = _playerCards
+            .Select(card => { card.ResetLoyalty(); return card.currentLoyalty; })
+            .Where(l => l > 0)
+            .Sum();
+        Debug.Log($"[TurnManager] Player turn. Total Loyalty = {_totalPlayerLoyalty}");
     }
 
-
-    /// <summary>
-    /// Пытается разыграть карту. Если это миньон — добавляет на поле и возвращает экземпляр; 
-    /// если способность — применяет её. В обоих случаях уменьшает ресурс лояльности.
-    /// </summary>
-    public CardInstance TryPlayCard(CardData cardData)
+    /// <summary>РќР°С‡Р°Р»Рѕ С…РѕРґР° РР: СЃР±СЂРѕСЃ Рё СЃСѓРјРјРёСЂРѕРІР°РЅРёРµ Р»РѕСЏР»СЊРЅРѕСЃС‚Рё.</summary>
+    public void StartEnemyTurn()
     {
-        // стоимость карты:
-        int cost = cardData.type == CardType.Minion
-            ? cardData.baseLoyalty
-            : cardData.loyaltyCost;
+        _totalEnemyLoyalty = _enemyCards
+            .Select(card => { card.ResetLoyalty(); return card.currentLoyalty; })
+            .Where(l => l > 0)
+            .Sum();
+        Debug.Log($"[TurnManager] Enemy turn. Total Loyalty = {_totalEnemyLoyalty}");
+    }
 
-        if (cost > _totalPlayerLoyalty)
-            return null; // недостаточно преданности
+    #endregion
 
-        // уменьшаем ресурс
+    #region Play Card Methods
+
+    public CardInstance TryPlayPlayerCard(CardData data)
+    {
+        int cost = data.type == CardType.Minion
+            ? data.baseLoyalty
+            : data.loyaltyCost;
+        if (cost > _totalPlayerLoyalty) return null;
         _totalPlayerLoyalty -= cost;
 
-        if (cardData.type == CardType.Minion)
+        if (data.type == CardType.Minion)
         {
-            var inst = new CardInstance(cardData);
+            var inst = new CardInstance(data);
             _playerCards.Add(inst);
+            // С‚СЂРёРіРіРµСЂ OnPlay РґР»СЏ РјРёРЅСЊРѕРЅР°
+            inst.OnPlay();
             return inst;
         }
         else
         {
-            // способности
-            ApplyCardEffect(cardData);
+            ApplyCardEffect(data);
             return null;
         }
     }
 
-    /// <summary>
-    /// Добавляет карту на поле
-    /// </summary>
-    public void AddPlayerCard(CardInstance instance)
+    public CardInstance TryPlayEnemyCard(CardData data)
     {
-        _playerCards.Add(instance);
+        int cost = data.type == CardType.Minion
+            ? data.baseLoyalty
+            : data.loyaltyCost;
+        if (cost > _totalEnemyLoyalty) return null;
+        _totalEnemyLoyalty -= cost;
+
+        if (data.type == CardType.Minion)
+        {
+            var inst = new CardInstance(data);
+            _enemyCards.Add(inst);
+            inst.OnPlay();
+            return inst;
+        }
+        else
+        {
+            ApplyCardEffect(data);
+            return null;
+        }
     }
 
-    /// <summary>
-    /// Удаляет данную карту с поля (игрока или ИИ).
-    /// </summary>
-    /// <returns>true если карта была найдена и удалена.</returns>
+    #endregion
+
+    #region Field Management
+
+    public void AddPlayerCard(CardInstance inst) => _playerCards.Add(inst);
+    public void AddEnemyCard(CardInstance inst) => _enemyCards.Add(inst);
+
+    public void RemoveCardsFromField(IEnumerable<CardInstance> toRemove)
+    {
+        _playerCards.RemoveAll(c => toRemove.Contains(c));
+        _enemyCards.RemoveAll(c => toRemove.Contains(c));
+    }
+
     public void RemoveDeadCards()
     {
         _playerCards.RemoveAll(c => !c.IsAlive);
         _enemyCards.RemoveAll(c => !c.IsAlive);
-    }
-
-    /// <summary>Списывает указанную преданность (без создания CardInstance).</summary>
-    public bool TrySpendLoyalty(int amount)
-    {
-        if (amount > _totalPlayerLoyalty) return false;
-        _totalPlayerLoyalty -= amount;
-        return true;
     }
 
     #endregion
@@ -132,15 +145,21 @@ public class TurnManager : MonoBehaviour
     #region Private Methods
 
     /// <summary>
-    /// Применяет эффекты урона, лечения и изменения лояльности одной карты.
+    /// РџСЂРёРјРµРЅСЏРµС‚ РјРіРЅРѕРІРµРЅРЅС‹Рµ СЌС„С„РµРєС‚С‹ СЃРїРѕСЃРѕР±РЅРѕСЃС‚РµР№ (trigger == OnPlay РёР»Рё Passive) РґР»СЏ СЃРїРµР»Р»РѕРІ Рё РіРµСЂРѕРёС‡РµСЃРєРёС… СѓРјРµРЅРёР№.
     /// </summary>
-    private void ApplyCardEffect(CardData cardData)
+    private void ApplyCardEffect(CardData data)
     {
-        // TODO: внедрить таргетинг; пока просто логирование
-        foreach (var eff in cardData.effects)
+        // Р”Р»СЏ РєР°Р¶РґРѕР№ СЃРїРѕСЃРѕР±РЅРѕСЃС‚Рё Сѓ РєР°СЂС‚С‹, СЃСЂР°Р±Р°С‚С‹РІР°СЋС‰РµР№ OnPlay РёР»Рё Passive
+        foreach (var ab in data.abilities.Where(a => a.trigger == AbilityTrigger.OnPlay || a.trigger == AbilityTrigger.Passive))
         {
-            Debug.Log($"[TurnManager] Applying effect {eff.abilityName} (damage {eff.damage}, heal {eff.heal}, loyalty {eff.loyaltyDelta})");
-            // пример: target.ModifyLoyalty(eff.loyaltyDelta);
+            Debug.Log($"[TurnManager] Applying ability {ab.abilityName}");
+            foreach (var eff in ab.effects)
+            {
+                Debug.Log($"    Effect {eff.type}: value={eff.value}, targetOwn={eff.targetsOwnPlayer}");
+                // Р—РґРµСЃСЊ РјРѕР¶РЅРѕ СЃСЂР°Р·Сѓ РїСЂРёРјРµРЅСЏС‚СЊ СЌС„С„РµРєС‚С‹ Р±РµР· С‚Р°СЂРіРµС‚РёРЅРіР°:
+                // РЅР°РїСЂРёРјРµСЂ, РµСЃР»Рё eff.targetsOwnPlayer в†’ РїСЂРёРјРµРЅСЏС‚СЊ Рє РіРµСЂРѕСЋ РёРіСЂРѕРєР°/РР
+                // РёРЅР°С‡Рµ вЂ” Рє РїСЂРѕС‚РёРІРѕРїРѕР»РѕР¶РЅРѕРјСѓ РіРµСЂРѕСЋ.
+            }
         }
     }
 

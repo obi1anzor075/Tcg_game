@@ -123,6 +123,7 @@ namespace SlimUI.ModernMenu{
 
 		public void PlayCampaign(){
 			exitMenu.SetActive(false);
+			LoadScene("Game");
 		}
 		
 		public void PlayCampaignMobile(){

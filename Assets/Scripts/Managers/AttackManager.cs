@@ -1,30 +1,27 @@
-using UnityEngine;
-using System.Collections.Generic;
 using System.Linq;
+using UnityEngine;
 
 #region Manager: AttackManager
 
 /// <summary>
-/// Управляет автоматическим разрешением фазы атаки для игрока и ИИ.
-/// Все атакующие карты автоматически наносят удары по целям.
-/// Поддерживает приоритетные цели, пока они живы.
+/// Отвечает за автоматическую фазу атаки:
+/// все атакующие карты с loyalty > 0 автоматически наносят урон по целям.
+/// Учтены пассивные способности «приоритетная цель» и триггеры OnAttack/OnDamaged.
 /// </summary>
 public class AttackManager : MonoBehaviour
 {
-    public static AttackManager Instance { get; private set; }
+    #region Singleton
 
-    #region Unity Methods
+    public static AttackManager Instance { get; private set; }
 
     private void Awake()
     {
-        if (Instance != null && Instance != this)
+        if (Instance != null && Instance != this) Destroy(gameObject);
+        else
         {
-            Destroy(gameObject);
-            return;
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
         }
-
-        Instance = this;
-        DontDestroyOnLoad(gameObject);
     }
 
     #endregion
@@ -32,12 +29,11 @@ public class AttackManager : MonoBehaviour
     #region Public API
 
     /// <summary>
-    /// Разрешает фазу атаки: все карты атакующей стороны автоматически наносят удары.
+    /// Разрешает фазу атаки: все свои карты с loyalty > 0 автоматически бьют по врагу.
     /// </summary>
-    /// <param name="isPlayerTurn">true — атака игрока, false — атака ИИ</param>
+    /// <param name="isPlayerTurn">true — ход игрока, false — ход ИИ</param>
     public void ResolveAttackPhase(bool isPlayerTurn)
     {
-        // выбираем списки атакующих и защищающихся
         var attackers = isPlayerTurn
             ? TurnManager.Instance.PlayerCards
             : TurnManager.Instance.EnemyCards;
@@ -46,71 +42,64 @@ public class AttackManager : MonoBehaviour
             ? TurnManager.Instance.EnemyCards
             : TurnManager.Instance.PlayerCards;
 
+        // нет атакующих или нет целей — выходим
         if (attackers.Count == 0 || defenders.Count == 0)
             return;
 
-        // Находим приоритетную цель — первая живая карта с приоритетной способностью
-        var priorityTarget = defenders.FirstOrDefault(c =>
-            c.cardData.ability != null &&
-            c.cardData.ability.isPriorityTarget &&
-            c.IsAlive);
+        // ищем приоритетную цель среди живых, у которых есть пассивная AbilityData.isPriorityTarget
+        CardInstance priority = defenders
+            .FirstOrDefault(d =>
+                d.IsAlive
+                && d.cardData.abilities != null
+                && d.cardData.abilities.Any(ab => ab.isPriorityTarget)
+            );
 
-        // Для каждого атакующего, у которого loyalty > 0
-        foreach (var attacker in attackers)
+        // каждый атакующий с CanAct
+        foreach (var atk in attackers)
         {
-            if (!attacker.CanAct || !attacker.IsAlive)
+            if (!atk.IsAlive || !atk.CanAct)
                 continue;
 
-            // выбираем цель: либо приоритетная, либо первая живая
-            var target = (priorityTarget != null && priorityTarget.IsAlive)
-                ? priorityTarget
-                : defenders.FirstOrDefault(c => c.IsAlive);
+            // триггерим OnAttack
+            atk.OnAttack();
+
+            // выбираем цель: сначала приоритет, потом любой живой миньон, потом герой
+            CardInstance target = null;
+
+            if (priority != null && priority.IsAlive)
+            {
+                target = priority;
+            }
+            else
+            {
+                // живые миньоны
+                target = defenders.FirstOrDefault(d => d.IsAlive && d.cardData.type == CardType.Minion)
+                      ?? defenders.FirstOrDefault(d => d.IsAlive && d.cardData.type == CardType.Hero);
+            }
 
             if (target == null)
-                break; // все цели уничтожены
+                break; // все цели мертвы
 
-            // Наносим урон
-            ResolveOneAttack(attacker, target);
+            // наносим урон: сначала защиту, затем HP
+            target.TakeDamage(atk.cardData.attack);
+            // триггерим OnDamaged у цели
+            target.OnDamaged();
 
-            // Если приоритетная цель погибла — сбросим её
-            if (priorityTarget != null && !priorityTarget.IsAlive)
-            {
-                priorityTarget = null;
-            }
+            // атакуясь, отраженный урон тоже применится через TakeDamage в target,
+            // но если нужно, можно отдельно:
+            atk.TakeDamage(target.cardData.attack);
+            atk.OnDamaged();
+
+            // если priority погиб — сбрасываем
+            if (priority != null && !priority.IsAlive)
+                priority = null;
         }
 
-        // Удаляем погибшие карты и обновляем UI
-        CleanupDeadUnits(isPlayerTurn);
-        UIManager.Instance.RefreshBattlefield();
-    }
-
-    #endregion
-
-    #region Private Methods
-
-    /// <summary>
-    /// Наносит урон между двумя картами: атакующий vs цель.
-    /// </summary>
-    private void ResolveOneAttack(CardInstance attacker, CardInstance defender)
-    {
-        defender.TakeDamage(attacker.cardData.attack);
-        // отражённый урон
-        attacker.TakeDamage(defender.cardData.attack);
-    }
-
-    /// <summary>
-    /// Удаляет погибшие карты из списков TurnManager.
-    /// </summary>
-    private void CleanupDeadUnits(bool wasPlayerAttacking)
-    {
-        var ownList = wasPlayerAttacking
-            ? TurnManager.Instance.PlayerCards
-            : TurnManager.Instance.EnemyCards;
-        var enemyList = wasPlayerAttacking
-            ? TurnManager.Instance.EnemyCards
-            : TurnManager.Instance.PlayerCards;
-
+        // убираем погибших из списков
         TurnManager.Instance.RemoveDeadCards();
+
+        // обновляем UI
+        UIManager.Instance.RefreshBattlefield();
     }
 
     #endregion
