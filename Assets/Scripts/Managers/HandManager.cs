@@ -1,24 +1,18 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
+#region Manager: HandManager
+
+/// <summary>
+/// Отвечает за колоды, руку игрока и ИИ, а также за добор и розыгрыш карт из руки.
+/// </summary>
 public class HandManager : MonoBehaviour
 {
+    #region Singleton
+
     public static HandManager Instance { get; private set; }
-
-    [Header("Настройки руки")]
-    public int startHandSize = 5;
-    public int drawPerTurn = 1;
-
-    [Header("Колоды игроков (в инспекторе)")]
-    public List<CardData> playerDeck = new();
-    public List<CardData> enemyDeck = new();
-
-    public List<CardData> playerHand { get; private set; } = new();
-    public List<CardData> enemyHand { get; private set; } = new();
-
-    // Событие: карта разыграна (для UI)
-    public event Action<CardData> OnCardPlayed;
 
     private void Awake()
     {
@@ -31,65 +25,113 @@ public class HandManager : MonoBehaviour
         }
     }
 
+    #endregion
+
+    #region Inspector Fields
+
+    [Header("Hand Settings")]
+    [Tooltip("Размер стартовой руки для каждого игрока")]
+    [SerializeField] private int _startHandSize = 5;
+
+    [Header("Decks (assign in Inspector)")]
+    [Tooltip("Колода игрока")]
+    [SerializeField] private List<CardData> _playerDeck = new();
+    [Tooltip("Колода ИИ")]
+    [SerializeField] private List<CardData> _enemyDeck = new();
+
+    #endregion
+
+    #region Public State
+
+    /// <summary>Текущая рука игрока.</summary>
+    public List<CardData> playerHand { get; private set; } = new();
+
+    /// <summary>Текущая рука ИИ.</summary>
+    public List<CardData> enemyHand { get; private set; } = new();
+
+    /// <summary>Событие: игрок/ИИ разыграл карту (для UI и логики).</summary>
+    public event Action<CardData> OnCardPlayed;
+
+    #endregion
+
+    #region Unity Methods
+
+    private void Start()
+    {
+        // При старте можно автоматически раздать стартовые руки
+        // или вызывать DealStartHands() из GameManager.Setup()
+    }
+
+    #endregion
+
+    #region Public API
+
     /// <summary>
-    /// Вызывается в Setup() GameManager: раздаёт стартовые руки.
+    /// Перетасовывает колоды и раздаёт по _startHandSize карт игроку и ИИ.
+    /// Вызывать один раз в Setup.
     /// </summary>
     public void DealStartHands()
     {
-        Shuffle(playerDeck);
-        Shuffle(enemyDeck);
+        Shuffle(_playerDeck);
+        Shuffle(_enemyDeck);
 
-        Debug.Log($"[DealStartHands] startHandSize={startHandSize}, playerDeck.Count={playerDeck.Count}");
-
-        for (int i = 0; i < startHandSize; i++)
+        for (int i = 0; i < _startHandSize; i++)
         {
-            DrawCard(playerDeck, playerHand);
-            DrawCard(enemyDeck, enemyHand);
-            Debug.Log($"  after draw {i + 1}: playerHand.Count={playerHand.Count}");
+            DrawCard(_playerDeck, playerHand);
+            DrawCard(_enemyDeck, enemyHand);
         }
     }
 
-
     /// <summary>
-    /// Вызывается в StartTurn() GameManager: добираем карту.
+    /// Добирает по одной карте для игрока или ИИ на начало хода.
     /// </summary>
+    /// <param name="isPlayer">true — игрок, false — ИИ</param>
     public void DrawTurnCards(bool isPlayer)
     {
         if (isPlayer)
-            DrawCard(playerDeck, playerHand);
+            DrawCard(_playerDeck, playerHand);
         else
-            DrawCard(enemyDeck, enemyHand);
-    }
-
-    private void DrawCard(List<CardData> deck, List<CardData> hand)
-    {
-        if (deck.Count == 0) return;
-        var card = deck[0];
-        deck.RemoveAt(0);
-        hand.Add(card);
-        Debug.Log($"{(deck == playerDeck ? "Player" : "AI")} draws {card.cardName}");
+            DrawCard(_enemyDeck, enemyHand);
     }
 
     /// <summary>
-    /// Вызываем, когда хотим разыграть карту из руки.
+    /// Пытается разыграть карту из руки.
+    /// Убирает её из списка и генерирует событие OnCardPlayed.
     /// </summary>
+    /// <param name="cardData">Данные карты</param>
+    /// <param name="isPlayer">true — ход игрока, false — ход ИИ</param>
+    /// <returns>true, если карта была в руке и удалена</returns>
     public bool TryPlayCard(CardData cardData, bool isPlayer)
     {
-        if (isPlayer && playerHand.Contains(cardData))
-        {
-            OnCardPlayed?.Invoke(cardData);
-            playerHand.Remove(cardData);
-            return true;
-        }
-        else if (!isPlayer && enemyHand.Contains(cardData))
-        {
-            OnCardPlayed?.Invoke(cardData);
-            enemyHand.Remove(cardData);
-            return true;
-        }
-        return false;
+        var hand = isPlayer ? playerHand : enemyHand;
+        if (!hand.Contains(cardData))
+            return false;
+
+        hand.Remove(cardData);
+        OnCardPlayed?.Invoke(cardData);
+        return true;
     }
 
+    #endregion
+
+    #region Private Helpers
+
+    /// <summary>
+    /// Вытягивает верхнюю карту из deck в hand.
+    /// </summary>
+    private void DrawCard(List<CardData> deck, List<CardData> hand)
+    {
+        if (deck.Count == 0)
+            return;
+
+        var top = deck[0];
+        deck.RemoveAt(0);
+        hand.Add(top);
+    }
+
+    /// <summary>
+    /// Перемешивает список карт в случайном порядке.
+    /// </summary>
     private void Shuffle(List<CardData> list)
     {
         for (int i = 0; i < list.Count; i++)
@@ -100,4 +142,28 @@ public class HandManager : MonoBehaviour
             list[r] = tmp;
         }
     }
+
+    /// <summary>
+    /// Извлекает первую карту типа Minion из колоды игрока и возвращает её.
+    /// </summary>
+    public CardData DrawFirstMinionFromPlayerDeck()
+    {
+        var minion = _playerDeck.FirstOrDefault(c => c.type == CardType.Minion);
+        if (minion != null) _playerDeck.Remove(minion);
+        return minion;
+    }
+
+    /// <summary>
+    /// Аналог для ИИ.
+    /// </summary>
+    public CardData DrawFirstMinionFromEnemyDeck()
+    {
+        var minion = _enemyDeck.FirstOrDefault(c => c.type == CardType.Minion);
+        if (minion != null) _enemyDeck.Remove(minion);
+        return minion;
+    }
+
+    #endregion
 }
+
+#endregion

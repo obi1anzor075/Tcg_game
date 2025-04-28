@@ -1,67 +1,70 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
+#region Manager: AIManager
+
+/// <summary>
+/// Управляет логикой хода ИИ: сброс и расчёт преданности, 
+/// последующий розыгрыш миньонов и способностей из руки.
+/// </summary>
 public class AIManager : MonoBehaviour
 {
+    #region Singleton
+
     public static AIManager Instance { get; private set; }
 
     private void Awake()
     {
-        if (Instance != null && Instance != this)
-            Destroy(gameObject);
-        else
-        {
-            Instance = this;
-            DontDestroyOnLoad(gameObject);
-        }
+        if (Instance != null && Instance != this) Destroy(gameObject);
+        else { Instance = this; DontDestroyOnLoad(gameObject); }
     }
 
+    #endregion
+
+    #region Public API
+
     /// <summary>
-    /// Логика хода ИИ: набираем лояльность, затем раскидываем доступные карты/способности.
+    /// Выполняет ход ИИ: обновляет ресурс, пробует сыграть миньоны, затем спеллы.
     /// </summary>
     public void PlayTurn()
     {
-        // 1. Рассчитываем ресурс лояльности ИИ
-        int totalLoyalty = 0;
-        foreach (var card in TurnManager.Instance.EnemyCards)
-        {
-            // Сбрасываем loyalty к базовому
-            card.ResetLoyalty();
-            if (card.currentLoyalty > 0)
-                totalLoyalty += card.currentLoyalty;
-        }
-        Debug.Log($"AI start turn. Total Loyalty = {totalLoyalty}");
+        TurnManager.Instance.StartTurn(false);
+        int loyalty = TurnManager.Instance.EnemyLoyalty;
+        var hand = HandManager.Instance.enemyHand.ToList();
 
-        // 2. Пробуем разыграть миньонов из руки (или способности)
-        //    Здесь предполагаем, что у ИИ есть список CardData в руке — добавьте свой менеджер руки, если нужно.
-        List<CardData> hand = HandManager.Instance.enemyHand;
-
-        // Сначала раскидываем всех миньонов, которых можем
-        foreach (var cardData in new List<CardData>(hand))
-        {
-            if (cardData.type == CardType.Minion &&
-                cardData.baseLoyalty <= totalLoyalty)
-            {
-                TurnManager.Instance.TryPlayCard(cardData);
-                totalLoyalty -= cardData.baseLoyalty;
-                hand.Remove(cardData);
-                Debug.Log($"AI played minion {cardData.cardName}");
-            }
-        }
-
-        // Потом способности/спеллы
-        foreach (var cardData in new List<CardData>(hand))
-        {
-            if ((cardData.type == CardType.Spell || cardData.type == CardType.HeroAbility) &&
-                cardData.loyaltyCost <= totalLoyalty)
-            {
-                TurnManager.Instance.TryPlayCard(cardData);
-                totalLoyalty -= cardData.loyaltyCost;
-                hand.Remove(cardData);
-                Debug.Log($"AI used ability {cardData.cardName}");
-            }
-        }
-
-        Debug.Log("AI end turn.");
+        // обобщённый метод
+        TryPlayAllOfType(hand, CardType.Minion, loyalty, c => c.baseLoyalty);
+        TryPlayAllOfType(hand, CardType.Spell, loyalty, c => c.loyaltyCost);
+        TryPlayAllOfType(hand, CardType.HeroAbility, loyalty, c => c.loyaltyCost);
     }
+
+    private void TryPlayAllOfType(
+          List<CardData> handCopy,
+          CardType type,
+          int currentLoyalty,
+          Func<CardData, int> costSelector)
+    {
+        foreach (var card in handCopy.Where(c => c.type == type).ToList())
+        {
+            int cost = costSelector(card);
+            if (cost <= currentLoyalty)
+            {
+                var inst = TurnManager.Instance.TryPlayCard(card, isPlayer:false);
+                if (inst != null)
+                {
+                    currentLoyalty -= cost;
+                    HandManager.Instance.enemyHand.Remove(card);
+                    UIManager.Instance.PlacePlayedCard(inst, false);
+                    GameManager.Instance.RecordPlayed(inst);
+                }
+            }
+        }
+    }
+
+
+    #endregion
 }
+
+#endregion
