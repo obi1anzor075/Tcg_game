@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-#region Manager: TurnManager
-
 /// <summary>
 /// Отвечает за хранение карт на поле, ресурс преданности и розыгрыш карт.
 /// </summary>
@@ -35,6 +33,7 @@ public class TurnManager : MonoBehaviour
 
     private int _playerLoyalty;
     private int _enemyLoyalty;
+    private int _currentTurn = 0;
 
     #endregion
 
@@ -52,6 +51,9 @@ public class TurnManager : MonoBehaviour
     /// <summary>Текущий ресурс преданности ИИ.</summary>
     public int EnemyLoyalty => _enemyLoyalty;
 
+    /// <summary>Текущий номер хода (начиная с 1).</summary>
+    public int CurrentTurn => _currentTurn;
+
     #endregion
 
     #region Turn Management
@@ -62,13 +64,19 @@ public class TurnManager : MonoBehaviour
     /// <param name="isPlayer">true — игрок, false — ИИ</param>
     public void StartTurn(bool isPlayer)
     {
+        // Увеличиваем счетчик ходов в начале хода игрока
+        if (isPlayer)
+        {
+            _currentTurn++;
+        }
+
         if (isPlayer)
         {
             _playerLoyalty = _playerCards
                 .Select(c => { c.ResetLoyalty(); return c.currentLoyalty; })
                 .Where(l => l > 0)
                 .Sum();
-            Debug.Log($"[TurnManager] Player turn started. Loyalty = {_playerLoyalty}");
+            Debug.Log($"[TurnManager] Player turn {_currentTurn} started. Loyalty = {_playerLoyalty}");
         }
         else
         {
@@ -76,7 +84,7 @@ public class TurnManager : MonoBehaviour
                 .Select(c => { c.ResetLoyalty(); return c.currentLoyalty; })
                 .Where(l => l > 0)
                 .Sum();
-            Debug.Log($"[TurnManager] Enemy turn started. Loyalty = {_enemyLoyalty}");
+            Debug.Log($"[TurnManager] Enemy turn {_currentTurn} started. Loyalty = {_enemyLoyalty}");
         }
     }
 
@@ -143,6 +151,14 @@ public class TurnManager : MonoBehaviour
     /// </summary>
     public void RemoveDeadCards()
     {
+        int playerDeadCount = _playerCards.Count(c => !c.IsAlive);
+        int enemyDeadCount = _enemyCards.Count(c => !c.IsAlive);
+
+        if (playerDeadCount > 0 || enemyDeadCount > 0)
+        {
+            Debug.Log($"[TurnManager] Removing dead cards: {playerDeadCount} player cards, {enemyDeadCount} enemy cards");
+        }
+
         _playerCards.RemoveAll(c => !c.IsAlive);
         _enemyCards.RemoveAll(c => !c.IsAlive);
     }
@@ -174,5 +190,3 @@ public class TurnManager : MonoBehaviour
 
     #endregion
 }
-
-#endregion

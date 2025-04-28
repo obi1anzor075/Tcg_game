@@ -19,6 +19,9 @@ public class GameManager : MonoBehaviour
     [Header("Начальные миньоны")]
     [SerializeField] private int _initialMinionCount = 3;
 
+    [Header("Game Settings")]
+    [SerializeField] private bool _skipFirstAttackPhase = true;
+
     private void Awake()
     {
         if (Instance != null && Instance != this) Destroy(gameObject);
@@ -54,8 +57,15 @@ public class GameManager : MonoBehaviour
             yield return StartCoroutine(PlayerTurn());
 
             // 2.4 Общая пост-ходовая логика для игрока
-            EndTurnCleanup(isPlayer: true);
-            if (CheckGameOver()) break;
+            bool skipAttackPhase = (_skipFirstAttackPhase && TurnManager.Instance.CurrentTurn == 1);
+            EndTurnCleanup(isPlayer: true, skipAttackPhase);
+
+            // Check if game is over AFTER player's turn
+            if (CheckGameOver())
+            {
+                Debug.Log("Game over after player's turn");
+                break;
+            }
 
             // --- Ход ИИ ---
             State = GameState.EnemyTurn;
@@ -72,8 +82,14 @@ public class GameManager : MonoBehaviour
             yield return StartCoroutine(EnemyTurn());
 
             // 2.8 Общая пост-ходовая логика для ИИ
-            EndTurnCleanup(isPlayer: false);
-            if (CheckGameOver()) break;
+            EndTurnCleanup(isPlayer: false, false);
+
+            // Check if game is over AFTER AI's turn
+            if (CheckGameOver())
+            {
+                Debug.Log("Game over after AI's turn");
+                break;
+            }
         }
 
         State = GameState.GameOver;
@@ -145,7 +161,7 @@ public class GameManager : MonoBehaviour
     /// Общая логика после хода: 
     /// перенос карт, фаза атаки, очистка played-панели.
     /// </summary>
-    private void EndTurnCleanup(bool isPlayer)
+    private void EndTurnCleanup(bool isPlayer, bool skipAttackPhase = false)
     {
         // Переносим сыгранные в постоянное поле
         TurnManager.Instance.RemoveCardsFromField(_roundPlayed);
@@ -153,8 +169,15 @@ public class GameManager : MonoBehaviour
         // Обновляем и показываем поле
         UIManager.Instance.RefreshBattlefield();
 
-        // Фаза атаки
-        AttackManager.Instance.ResolveAttackPhase(isPlayer);
+        // Фаза атаки (можно пропустить в первом ходу)
+        if (!skipAttackPhase)
+        {
+            AttackManager.Instance.ResolveAttackPhase(isPlayer);
+        }
+        else
+        {
+            Debug.Log("Skipping first attack phase");
+        }
 
         // Ещё раз обновляем поле после атак
         UIManager.Instance.RefreshBattlefield();
@@ -168,17 +191,34 @@ public class GameManager : MonoBehaviour
 
     private bool CheckGameOver()
     {
-        bool pDead = TurnManager.Instance.PlayerCards
-            .Any(c => c.cardData.type == CardType.Hero && !c.IsAlive);
-        bool eDead = TurnManager.Instance.EnemyCards
+        // Check if player hero is dead
+        bool playerHeroDead = TurnManager.Instance.PlayerCards
             .Any(c => c.cardData.type == CardType.Hero && !c.IsAlive);
 
-        bool allPM = TurnManager.Instance.PlayerCards
-            .Where(c => c.cardData.type == CardType.Minion).All(c => !c.IsAlive);
-        bool allEM = TurnManager.Instance.EnemyCards
-            .Where(c => c.cardData.type == CardType.Minion).All(c => !c.IsAlive);
+        // Check if AI hero is dead
+        bool enemyHeroDead = TurnManager.Instance.EnemyCards
+            .Any(c => c.cardData.type == CardType.Hero && !c.IsAlive);
 
-        return (pDead && allPM) || (eDead && allEM);
+        // Check if all player minions are dead
+        bool allPlayerMinionsDead = !TurnManager.Instance.PlayerCards
+            .Any(c => c.cardData.type == CardType.Minion && c.IsAlive);
+
+        // Check if all enemy minions are dead
+        bool allEnemyMinionsDead = !TurnManager.Instance.EnemyCards
+            .Any(c => c.cardData.type == CardType.Minion && c.IsAlive);
+
+        // Game over conditions:
+        // 1. Player hero is dead AND all player minions are dead
+        // 2. Enemy hero is dead AND all enemy minions are dead
+        bool gameOver = (playerHeroDead && allPlayerMinionsDead) || (enemyHeroDead && allEnemyMinionsDead);
+
+        if (gameOver)
+        {
+            Debug.Log($"Game over check: Player hero dead: {playerHeroDead}, All player minions dead: {allPlayerMinionsDead}");
+            Debug.Log($"Game over check: Enemy hero dead: {enemyHeroDead}, All enemy minions dead: {allEnemyMinionsDead}");
+        }
+
+        return gameOver;
     }
 
     public void RecordPlayed(CardInstance inst)

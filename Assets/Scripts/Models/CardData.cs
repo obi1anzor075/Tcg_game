@@ -9,8 +9,8 @@ public class CardData : ScriptableObject
     public CardType type;
 
     [Header("Stats (Hero & Minion)")]
-    public int maxHP;           // текущее здоровье
-    public int attack;          // сила атаки
+    public int baseHealth;           // текущее здоровье
+    public int baseAttack;          // сила атаки
     public int baseDefense;     // щит (defense)
     public int baseLoyalty;     // базовая лояльность (cost для Minion)
 

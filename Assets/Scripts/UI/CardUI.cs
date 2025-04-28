@@ -122,7 +122,7 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 
         // Защита и HP (для рука, можно скрыть)
         _defenseText.text = data.baseDefense.ToString();
-        _hpText.text = data.maxHP.ToString();
+        _hpText.text = data.baseHealth.ToString();
 
         // Описание способностей
         if (_abilityDescText != null)
