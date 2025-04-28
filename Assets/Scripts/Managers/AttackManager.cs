@@ -1,19 +1,16 @@
-using UnityEngine;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-
-#region Manager: AttackManager
+using UnityEngine;
 
 /// <summary>
-/// Управляет автоматическим разрешением фазы атаки для игрока и ИИ.
-/// Все атакующие карты автоматически наносят удары по целям.
-/// Поддерживает приоритетные цели, пока они живы.
+/// Manages the attack phase of each turn, handling how cards attack each other.
 /// </summary>
 public class AttackManager : MonoBehaviour
 {
-    public static AttackManager Instance { get; private set; }
+    #region Singleton
 
-    #region Unity Methods
+    public static AttackManager Instance { get; private set; }
 
     private void Awake()
     {
@@ -22,98 +19,150 @@ public class AttackManager : MonoBehaviour
             Destroy(gameObject);
             return;
         }
-
         Instance = this;
         DontDestroyOnLoad(gameObject);
     }
 
     #endregion
 
-    #region Public API
+    [Header("Attack Settings")]
+    [SerializeField] private float _attackAnimationDelay = 0.3f;
+    [SerializeField] private bool _showDebugLogs = true;
 
     /// <summary>
-    /// Разрешает фазу атаки: все карты атакующей стороны автоматически наносят удары.
+    /// Resolves the attack phase for the current player's turn.
     /// </summary>
-    /// <param name="isPlayerTurn">true — атака игрока, false — атака ИИ</param>
-    public void ResolveAttackPhase(bool isPlayerTurn)
+    /// <param name="isPlayer">True if player's turn, false if AI's turn</param>
+    public void ResolveAttackPhase(bool isPlayer)
     {
-        // выбираем списки атакующих и защищающихся
-        var attackers = isPlayerTurn
-            ? TurnManager.Instance.PlayerCards
-            : TurnManager.Instance.EnemyCards;
+        LogMessage("Starting attack phase");
 
-        var defenders = isPlayerTurn
-            ? TurnManager.Instance.EnemyCards
-            : TurnManager.Instance.PlayerCards;
+        // Get attacking and defending card collections
+        List<CardInstance> attackers = isPlayer
+            ? TurnManager.Instance.PlayerCards.Where(c => c.IsAlive && c.currentAttack > 0).ToList()
+            : TurnManager.Instance.EnemyCards.Where(c => c.IsAlive && c.currentAttack > 0).ToList();
+
+        List<CardInstance> defenders = isPlayer
+            ? TurnManager.Instance.EnemyCards.Where(c => c.IsAlive).ToList()
+            : TurnManager.Instance.PlayerCards.Where(c => c.IsAlive).ToList();
 
         if (attackers.Count == 0 || defenders.Count == 0)
+        {
+            LogMessage("No attackers or defenders available. Skipping attack phase.");
             return;
+        }
 
-        // Находим приоритетную цель — первая живая карта с приоритетной способностью
-        var priorityTarget = defenders.FirstOrDefault(c =>
-            c.cardData.ability != null &&
-            c.cardData.ability.isPriorityTarget &&
-            c.IsAlive);
+        LogMessage($"Found {attackers.Count} attackers and {defenders.Count} defenders");
 
-        // Для каждого атакующего, у которого loyalty > 0
+        // Process each attacker individually
         foreach (var attacker in attackers)
         {
-            if (!attacker.CanAct || !attacker.IsAlive)
-                continue;
-
-            // выбираем цель: либо приоритетная, либо первая живая
-            var target = (priorityTarget != null && priorityTarget.IsAlive)
-                ? priorityTarget
-                : defenders.FirstOrDefault(c => c.IsAlive);
-
-            if (target == null)
-                break; // все цели уничтожены
-
-            // Наносим урон
-            ResolveOneAttack(attacker, target);
-
-            // Если приоритетная цель погибла — сбросим её
-            if (priorityTarget != null && !priorityTarget.IsAlive)
+            // Skip cards that can't attack (0 attack power)
+            if (attacker.currentAttack <= 0)
             {
-                priorityTarget = null;
+                LogMessage($"{attacker.cardData.cardName} can't attack (0 attack power)");
+                continue;
+            }
+
+            // Find an appropriate target for this attacker
+            CardInstance target = SelectTargetFor(attacker, defenders);
+
+            if (target != null)
+            {
+                // Execute the attack and apply damage
+                ExecuteAttack(attacker, target);
+
+                // Check if target was defeated and update defenders list if needed
+                if (!target.IsAlive)
+                {
+                    LogMessage($"{target.cardData.cardName} was defeated and will be removed from defenders");
+                    defenders.Remove(target);
+                    if (defenders.Count == 0)
+                    {
+                        LogMessage("No more defenders left. Ending attack phase.");
+                        break;
+                    }
+                }
             }
         }
 
-        // Удаляем погибшие карты и обновляем UI
-        CleanupDeadUnits(isPlayerTurn);
-        UIManager.Instance.RefreshBattlefield();
-    }
-
-    #endregion
-
-    #region Private Methods
-
-    /// <summary>
-    /// Наносит урон между двумя картами: атакующий vs цель.
-    /// </summary>
-    private void ResolveOneAttack(CardInstance attacker, CardInstance defender)
-    {
-        defender.TakeDamage(attacker.cardData.attack);
-        // отражённый урон
-        attacker.TakeDamage(defender.cardData.attack);
-    }
-
-    /// <summary>
-    /// Удаляет погибшие карты из списков TurnManager.
-    /// </summary>
-    private void CleanupDeadUnits(bool wasPlayerAttacking)
-    {
-        var ownList = wasPlayerAttacking
-            ? TurnManager.Instance.PlayerCards
-            : TurnManager.Instance.EnemyCards;
-        var enemyList = wasPlayerAttacking
-            ? TurnManager.Instance.EnemyCards
-            : TurnManager.Instance.PlayerCards;
-
+        // Remove any cards that were killed during the attack phase
         TurnManager.Instance.RemoveDeadCards();
+
+        LogMessage("Attack phase completed");
     }
 
-    #endregion
-}
+    /// <summary>
+    /// Selects a target for the attacker following targeting rules.
+    /// </summary>
+    private CardInstance SelectTargetFor(CardInstance attacker, List<CardInstance> possibleTargets)
+    {
+        if (possibleTargets.Count == 0)
+        {
+            LogMessage($"No targets available for {attacker.cardData.cardName}");
+            return null;
+        }
 
-#endregion
+        // Priority 1: For heroes, prioritize attacking enemy hero if possible
+        if (attacker.cardData.type == CardType.Hero)
+        {
+            var enemyHero = possibleTargets.FirstOrDefault(c => c.cardData.type == CardType.Hero);
+            if (enemyHero != null)
+            {
+                LogMessage($"{attacker.cardData.cardName} targets enemy hero {enemyHero.cardData.cardName}");
+                return enemyHero;
+            }
+        }
+
+        // Priority 2: For minions, prioritize attacking minions with lowest defense first
+        var minions = possibleTargets.Where(c => c.cardData.type == CardType.Minion).ToList();
+        if (minions.Count > 0)
+        {
+            // Target minion with lowest defense first
+            var target = minions.OrderBy(m => m.CurrentDefense).ThenBy(m => m.currentHealth).FirstOrDefault();
+            LogMessage($"{attacker.cardData.cardName} targets minion {target.cardData.cardName}");
+            return target;
+        }
+
+        // Priority 3: If no minions, attack the hero
+        var hero = possibleTargets.FirstOrDefault(c => c.cardData.type == CardType.Hero);
+        if (hero != null)
+        {
+            LogMessage($"{attacker.cardData.cardName} targets hero {hero.cardData.cardName} (no minions left)");
+        }
+        return hero;
+    }
+
+    /// <summary>
+    /// Executes an attack from attacker to defender.
+    /// </summary>
+    private void ExecuteAttack(CardInstance attacker, CardInstance defender)
+    {
+        int damage = attacker.currentAttack;
+
+        LogMessage($"{attacker.cardData.cardName} attacks {defender.cardData.cardName} for {damage} damage!");
+
+        // Apply damage to defender - our updated TakeDamage method will handle defense properly
+        defender.TakeDamage(damage);
+
+        // Check if defender is still alive and can counter-attack
+        // Heroes don't counter-attack, but minions do if they have attack value
+        if (defender.IsAlive && defender.cardData.type == CardType.Minion && defender.currentAttack > 0)
+        {
+            int counterDamage = defender.currentAttack;
+            LogMessage($"{defender.cardData.cardName} counter-attacks for {counterDamage} damage!");
+            attacker.TakeDamage(counterDamage);
+        }
+    }
+
+    /// <summary>
+    /// Helper method for logging debug messages.
+    /// </summary>
+    private void LogMessage(string message)
+    {
+        if (_showDebugLogs)
+        {
+            Debug.Log($"[AttackManager] {message}");
+        }
+    }
+}
