@@ -59,7 +59,11 @@ public class EffectProcessor : MonoBehaviour
                     target.TakeDamage(eff.value);
                     break;
                 case EffectType.Heal:
+<<<<<<< HEAD
                     target.currentHP = Mathf.Min(target.cardData.maxHP, target.currentHP + eff.value);
+=======
+                    target.currentHealth = Mathf.Min(target.cardData.baseHealth, target.currentHP + eff.value);
+>>>>>>> 605d83d0ea2028f7b1cb35ae24fb7cb8822377ee
                     break;
                 case EffectType.ModifyLoyalty:
                     target.ModifyLoyalty(eff.value);

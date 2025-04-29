@@ -36,6 +36,60 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     private CardData _cardData;
     private CardInstance _cardInstance;
     private bool _isPlayerHand;
+    public bool IsEnemy { get; private set; }
+
+    #endregion
+
+    #region Unity
+
+    private void Awake()
+    {
+        if (_visual == null)
+            _visual = GetComponent<RectTransform>();
+        _startPos = _visual.localPosition;
+        _startScale = _visual.localScale;
+    }
+
+    #endregion
+
+    #region Hover Handlers
+
+    private void OnDisable()
+    {
+        // Гарантированно убиваем любые твины, привязанные к visual или этому объекту
+        if (_visual != null) _visual.DOKill();
+        transform.DOKill();
+    }
+
+    public void OnPointerEnter(PointerEventData e)
+    {
+        if (!_isPlayerHand) return;
+
+        _visual.DOKill();
+        transform.DOKill();
+
+        _visual
+            .DOLocalMoveY(_startPos.y + _hoverY, _dur)
+            .SetEase(Ease.OutQuad);
+        transform
+            .DOScale(_startScale * _scale, _dur)
+            .SetEase(Ease.OutQuad);
+    }
+
+    public void OnPointerExit(PointerEventData e)
+    {
+        if (!_isPlayerHand) return;
+
+        _visual.DOKill();
+        transform.DOKill();
+
+        _visual
+            .DOLocalMove(_startPos, _dur)
+            .SetEase(Ease.OutQuad);
+        transform
+            .DOScale(_startScale, _dur)
+            .SetEase(Ease.OutQuad);
+    }
 
     private bool _isEnemySide;
     public bool IsEnemy => _isEnemySide;
@@ -103,6 +157,11 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         _cardData = data;
         _cardInstance = null;
         _isPlayerHand = isPlayer;
+        IsEnemy = !_isPlayerHand; 
+
+        // Сохраняем LayoutElement и временно отключаем layout, чтобы анимация не дергалась
+        var layoutElem = GetComponent<LayoutElement>();
+        if (layoutElem != null) layoutElem.ignoreLayout = false;
 
         // Сохраняем LayoutElement и временно отключаем layout, чтобы анимация не дергалась
         var layoutElem = GetComponent<LayoutElement>();
@@ -123,7 +182,11 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 
         // Защита и HP (для рука, можно скрыть)
         _defenseText.text = data.baseDefense.ToString();
+<<<<<<< HEAD
         _hpText.text = data.maxHP.ToString();
+=======
+        _hpText.text = data.baseHealth.ToString();
+>>>>>>> 605d83d0ea2028f7b1cb35ae24fb7cb8822377ee
 
         // Описание способностей
         if (_abilityDescText != null)
@@ -159,12 +222,19 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         _hpText.text = "";
         _abilityDescText.gameObject.SetActive(false);
         _highlightBorder.enabled = false;
+<<<<<<< HEAD
     }
 
     /// <summary>Настроить UI для карты на поле (битва).</summary>
     /// <summary>
     /// Настроить UI для карты на поле (битва).
     /// </summary>
+=======
+        IsEnemy = true;             
+    }
+
+    /// <summary>Настроить UI для карты на поле (битва).</summary>
+>>>>>>> 605d83d0ea2028f7b1cb35ae24fb7cb8822377ee
     public void SetupBattle(CardInstance instance, bool isPlayerSide)
     {
         _cardInstance = instance;
@@ -172,6 +242,7 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 
         // в бою это уже не карта в руке
         _isPlayerHand = false;
+        IsEnemy = !isPlayerSide;
 
         // запоминаем, чей это боец
         _isEnemySide = !isPlayerSide;
@@ -197,7 +268,11 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         if (_hpText != null)
             _hpText.text = instance.currentHP.ToString();
 
+<<<<<<< HEAD
         // Описание способности (первая, если есть)
+=======
+        // Описание способности (берем первую, если есть)
+>>>>>>> 605d83d0ea2028f7b1cb35ae24fb7cb8822377ee
         if (_abilityDescText != null)
         {
             if (_cardData.abilities != null && _cardData.abilities.Length > 0)
@@ -220,6 +295,10 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         btn.onClick.RemoveAllListeners();
         btn.onClick.AddListener(OnClicked);
     }
+<<<<<<< HEAD
+=======
+
+>>>>>>> 605d83d0ea2028f7b1cb35ae24fb7cb8822377ee
     /// <summary>Включить/выключить подсветку карты.</summary>
     public void SetHighlight(bool highlight)
     {
@@ -237,6 +316,7 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 
         switch (_cardData.type)
         {
+<<<<<<< HEAD
             case CardType.Minion:
             case CardType.Spell:
             case CardType.HeroAbility:
@@ -269,6 +349,66 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
             case CardType.Hero:
                 // героя из руки не играем
                 break;
+=======
+            switch (_cardData.type)
+            {
+                case CardType.Minion:
+                    // ———————— Розыгрыш преданного ————————
+                    var minionInst = TurnManager.Instance.TryPlayCard(_cardData, isPlayer: true);
+                    if (minionInst == null)
+                    {
+                        Debug.LogWarning($"Not enough loyalty to play {_cardData.cardName}");
+                        return;
+                    }
+                    HandManager.Instance.TryPlayCard(_cardData, true);
+                    UIManager.Instance.UpdateLoyaltyDisplay();
+                    UIManager.Instance.PlacePlayedCard(minionInst, true);
+                    GameManager.Instance.RecordPlayed(minionInst);
+                    UIManager.Instance.RefreshHands();
+                    break;
+
+                case CardType.Spell:
+                case CardType.HeroAbility:
+                    // ———————— Розыгрыш спелла/геро. способности ————————
+                    // 1) Берём первую AbilityData
+                    if (_cardData.abilities == null || _cardData.abilities.Length == 0)
+                    {
+                        Debug.LogWarning($"No abilities assigned to {_cardData.cardName}");
+                        return;
+                    }
+                    var ability = _cardData.abilities[0];
+
+                    // 2) Пробуем списать лояльность и применить OnPlay-пассивки
+                    //    Используем тот же метод, что и для розыгрыша: он сразу вызовет ApplyCardEffect для OnPlay/Passive
+                    var spellInst = TurnManager.Instance.TryPlayCard(_cardData, isPlayer: true);
+                    if (spellInst == null)
+                    {
+                        Debug.LogWarning($"Not enough loyalty to cast {_cardData.cardName}");
+                        return;
+                    }
+
+                    // 3) Удаляем карту из руки
+                    HandManager.Instance.TryPlayCard(_cardData, true);
+
+                    // 4) Обновляем UI руки
+                    UIManager.Instance.RefreshHands();
+
+                    // 5) Входим в режим таргетинга для выбранной способности
+                    UIManager.Instance.BeginTargetMode(ability);
+                    break;
+
+                case CardType.Hero:
+                    // героя из руки не играем
+                    break;
+            }
+        }
+        else if (UIManager.Instance.IsTargeting && _cardInstance != null)
+        {
+            // ———————— Применение спелла к цели ————————
+            EffectProcessor.Instance.ApplyEffectTo(_cardInstance);
+            UIManager.Instance.EndTargetMode();
+            UIManager.Instance.RefreshBattlefield();
+>>>>>>> 605d83d0ea2028f7b1cb35ae24fb7cb8822377ee
         }
     }
 

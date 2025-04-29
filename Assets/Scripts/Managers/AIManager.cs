@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -29,6 +30,7 @@ public class AIManager : MonoBehaviour
     /// </summary>
     public void PlayTurn()
     {
+<<<<<<< HEAD
         // 1. Начало хода ИИ: сброс и восстановление лояльности
         TurnManager.Instance.StartTurn(isPlayer: false);
         int totalLoyalty = TurnManager.Instance.EnemyLoyalty;
@@ -75,6 +77,42 @@ public class AIManager : MonoBehaviour
         Debug.Log("[AIManager] AI end turn.");
     }
 
+=======
+        TurnManager.Instance.StartTurn(false);
+        int loyalty = TurnManager.Instance.EnemyLoyalty;
+        var hand = HandManager.Instance.enemyHand.ToList();
+
+        // обобщённый метод
+        TryPlayAllOfType(hand, CardType.Minion, loyalty, c => c.baseLoyalty);
+        TryPlayAllOfType(hand, CardType.Spell, loyalty, c => c.loyaltyCost);
+        TryPlayAllOfType(hand, CardType.HeroAbility, loyalty, c => c.loyaltyCost);
+    }
+
+    private void TryPlayAllOfType(
+          List<CardData> handCopy,
+          CardType type,
+          int currentLoyalty,
+          Func<CardData, int> costSelector)
+    {
+        foreach (var card in handCopy.Where(c => c.type == type).ToList())
+        {
+            int cost = costSelector(card);
+            if (cost <= currentLoyalty)
+            {
+                var inst = TurnManager.Instance.TryPlayCard(card, isPlayer:false);
+                if (inst != null)
+                {
+                    currentLoyalty -= cost;
+                    HandManager.Instance.enemyHand.Remove(card);
+                    UIManager.Instance.PlacePlayedCard(inst, false);
+                    GameManager.Instance.RecordPlayed(inst);
+                }
+            }
+        }
+    }
+
+
+>>>>>>> 605d83d0ea2028f7b1cb35ae24fb7cb8822377ee
     #endregion
 }
 
