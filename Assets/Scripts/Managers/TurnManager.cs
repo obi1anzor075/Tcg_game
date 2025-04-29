@@ -32,8 +32,8 @@ public class TurnManager : MonoBehaviour
     [SerializeField] private List<CardInstance> _playerCards = new();
     [SerializeField] private List<CardInstance> _enemyCards = new();
 
-    private int _totalPlayerLoyalty;
-    private int _totalEnemyLoyalty;
+    private int _playerLoyalty;
+    private int _enemyLoyalty;
 
     #endregion
 
@@ -43,83 +43,67 @@ public class TurnManager : MonoBehaviour
     public IReadOnlyList<CardInstance> PlayerCards => _playerCards;
     /// <summary>Копии списка карт ИИ (readonly).</summary>
     public IReadOnlyList<CardInstance> EnemyCards => _enemyCards;
-    /// <summary>Текущий ресурс лояльности игрока.</summary>
-    public int TotalPlayerLoyalty => _totalPlayerLoyalty;
-    /// <summary>Текущий ресурс лояльности ИИ.</summary>
-    public int TotalEnemyLoyalty => _totalEnemyLoyalty;
+    /// <summary>Текущий ресурс преданности игрока.</summary>
+    public int PlayerLoyalty => _playerLoyalty;
+    /// <summary>Текущий ресурс преданности ИИ.</summary>
+    public int EnemyLoyalty => _enemyLoyalty;
 
     #endregion
 
     #region Turn Management
 
     /// <summary>Начало хода игрока: сброс и суммирование лояльности.</summary>
-    public void StartPlayerTurn()
+    /// <summary>
+    /// Начало хода: сброс и суммирование преданности для игрока или ИИ.
+    /// </summary>
+    public void StartTurn(bool isPlayer)
     {
-        _totalPlayerLoyalty = _playerCards
-            .Select(card => { card.ResetLoyalty(); return card.currentLoyalty; })
-            .Where(l => l > 0)
-            .Sum();
-        Debug.Log($"[TurnManager] Player turn. Total Loyalty = {_totalPlayerLoyalty}");
+        if (isPlayer)
+        {
+            _playerLoyalty = _playerCards
+                .Select(c => { c.ResetLoyalty(); return c.currentLoyalty; })
+                .Where(l => l > 0).Sum();
+            Debug.Log($"[TurnManager] Player turn. Loyalty = {_playerLoyalty}");
+        }
+        else
+        {
+            _enemyLoyalty = _enemyCards
+                .Select(c => { c.ResetLoyalty(); return c.currentLoyalty; })
+                .Where(l => l > 0).Sum();
+            Debug.Log($"[TurnManager] Enemy turn. Loyalty = {_enemyLoyalty}");
+        }
     }
 
-    /// <summary>Начало хода ИИ: сброс и суммирование лояльности.</summary>
-    public void StartEnemyTurn()
-    {
-        _totalEnemyLoyalty = _enemyCards
-            .Select(card => { card.ResetLoyalty(); return card.currentLoyalty; })
-            .Where(l => l > 0)
-            .Sum();
-        Debug.Log($"[TurnManager] Enemy turn. Total Loyalty = {_totalEnemyLoyalty}");
-    }
 
     #endregion
 
     #region Play Card Methods
 
-    public CardInstance TryPlayPlayerCard(CardData data)
+    /// <summary>
+    /// Пытается разыграть карту (миньон или спелл) для игрока/ИИ из общей «преданности» данного.
+    /// </summary>
+    /// <returns>Если это миньон – новый экземпляр, иначе null (спелл).</returns>
+    public CardInstance TryPlayCard(CardData data, bool isPlayer)
     {
-        int cost = data.type == CardType.Minion
-            ? data.baseLoyalty
-            : data.loyaltyCost;
-        if (cost > _totalPlayerLoyalty) return null;
-        _totalPlayerLoyalty -= cost;
+        int cost = data.type == CardType.Minion ? data.baseLoyalty : data.loyaltyCost;
+        ref int pool = ref (isPlayer ? ref _playerLoyalty : ref _enemyLoyalty);
+
+        if (cost > pool) return null;
+        pool -= cost;
 
         if (data.type == CardType.Minion)
         {
             var inst = new CardInstance(data);
-            _playerCards.Add(inst);
-            // триггер OnPlay для миньона
             inst.OnPlay();
             return inst;
         }
         else
         {
-            ApplyCardEffect(data);
+            ApplyCardEffect(data, isPlayer);
             return null;
         }
     }
 
-    public CardInstance TryPlayEnemyCard(CardData data)
-    {
-        int cost = data.type == CardType.Minion
-            ? data.baseLoyalty
-            : data.loyaltyCost;
-        if (cost > _totalEnemyLoyalty) return null;
-        _totalEnemyLoyalty -= cost;
-
-        if (data.type == CardType.Minion)
-        {
-            var inst = new CardInstance(data);
-            _enemyCards.Add(inst);
-            inst.OnPlay();
-            return inst;
-        }
-        else
-        {
-            ApplyCardEffect(data);
-            return null;
-        }
-    }
 
     #endregion
 
@@ -128,12 +112,15 @@ public class TurnManager : MonoBehaviour
     public void AddPlayerCard(CardInstance inst) => _playerCards.Add(inst);
     public void AddEnemyCard(CardInstance inst) => _enemyCards.Add(inst);
 
+
+    /// <summary>Убирает из поля указанные экземпляры (часть EndTurnCleanup).</summary>
     public void RemoveCardsFromField(IEnumerable<CardInstance> toRemove)
     {
         _playerCards.RemoveAll(c => toRemove.Contains(c));
         _enemyCards.RemoveAll(c => toRemove.Contains(c));
     }
 
+    /// <summary>Удаляет убитых (IsAlive==false) после боя или атак.</summary>
     public void RemoveDeadCards()
     {
         _playerCards.RemoveAll(c => !c.IsAlive);
@@ -147,18 +134,18 @@ public class TurnManager : MonoBehaviour
     /// <summary>
     /// Применяет мгновенные эффекты способностей (trigger == OnPlay или Passive) для спеллов и героических умений.
     /// </summary>
-    private void ApplyCardEffect(CardData data)
+    private void ApplyCardEffect(CardData data, bool isPlayer)
     {
-        // Для каждой способности у карты, срабатывающей OnPlay или Passive
-        foreach (var ab in data.abilities.Where(a => a.trigger == AbilityTrigger.OnPlay || a.trigger == AbilityTrigger.Passive))
+        // Тут сразу подставьте свою логику мгновенных эффектов (OnPlay / Passive)
+        foreach (var ab in data.abilities.Where(a =>
+                     a.trigger == AbilityTrigger.OnPlay || a.trigger == AbilityTrigger.Passive))
         {
-            Debug.Log($"[TurnManager] Applying ability {ab.abilityName}");
             foreach (var eff in ab.effects)
             {
-                Debug.Log($"    Effect {eff.type}: value={eff.value}, targetOwn={eff.targetsOwnPlayer}");
-                // Здесь можно сразу применять эффекты без таргетинга:
-                // например, если eff.targetsOwnPlayer → применять к герою игрока/ИИ
-                // иначе — к противоположному герою.
+                Debug.Log($"[TurnManager] Apply {eff.type}={eff.value} ({ab.abilityName})");
+                // Например:
+                // if (eff.targetsOwnPlayer) ... healing own hero
+                // else ... damage enemy hero
             }
         }
     }

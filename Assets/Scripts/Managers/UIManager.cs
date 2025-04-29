@@ -44,10 +44,10 @@ public class UIManager : MonoBehaviour
     #region State
 
     private bool _isTargeting = false;
-    private AbilityData _currentEffectAbility = null; 
+    private AbilityData _currentEffectAbility = null;
 
     public bool IsTargeting => _isTargeting;
-    public AbilityData CurrentEffectAbility => _currentEffectAbility; 
+    public AbilityData CurrentEffectAbility => _currentEffectAbility;
 
     #endregion
 
@@ -73,62 +73,56 @@ public class UIManager : MonoBehaviour
 
     #region Public API
 
-    /// <summary>
-    /// Обновляет UI рук игрока и ИИ, создавая карты через CardFactory.
-    /// </summary>
     public void RefreshHands()
     {
+        // Игрок
         foreach (Transform t in _playerHandArea) Destroy(t.gameObject);
         foreach (var data in HandManager.Instance.playerHand)
-            CardFactory.Instance.CreateMinion(data, _playerHandArea, true, true);
+            CardFactory.Instance.CreateMinion(data, _playerHandArea, inHand: true, isPlayer: true);
 
+        // ИИ
         foreach (Transform t in _enemyHandArea) Destroy(t.gameObject);
         int cnt = HandManager.Instance.enemyHand.Count;
         for (int i = 0; i < cnt; i++)
             Instantiate(_cardBackPrefab, _enemyHandArea);
     }
 
-    /// <summary>
-    /// Обновляет UI поля битвы: герой по центру и верные впереди него.
-    /// </summary>
     public void RefreshBattlefield()
     {
+        // Очистка
         foreach (Transform t in _playerHeroArea) Destroy(t.gameObject);
         foreach (Transform t in _playerMinionsArea) Destroy(t.gameObject);
-
-        var playerHero = TurnManager.Instance.PlayerCards
-            .FirstOrDefault(c => c.cardData.type == CardType.Hero);
-        if (playerHero != null)
-            CardFactory.Instance.CreateHeroOnField(playerHero.cardData, _playerHeroArea);
-
-        var playerMinions = TurnManager.Instance.PlayerCards
-            .Where(c => c.cardData.type == CardType.Minion);
-        foreach (var inst in playerMinions)
-            CardFactory.Instance.CreateMinionInstance(inst, _playerMinionsArea, true);
-
         foreach (Transform t in _enemyHeroArea) Destroy(t.gameObject);
         foreach (Transform t in _enemyMinionsArea) Destroy(t.gameObject);
 
+        // Герой игрока
+        var playerHero = TurnManager.Instance.PlayerCards
+            .FirstOrDefault(c => c.cardData.type == CardType.Hero);
+        if (playerHero != null)
+            CardFactory.Instance.CreateHeroOnField(playerHero.cardData, _playerHeroArea, isPlayer: true);
+
+        // Миньоны игрока
+        var playerMinions = TurnManager.Instance.PlayerCards
+            .Where(c => c.cardData.type == CardType.Minion);
+        foreach (var inst in playerMinions)
+            CardFactory.Instance.CreateMinionInstance(inst, _playerMinionsArea, isPlayer: true);
+
+        // Герой противника
         var enemyHero = TurnManager.Instance.EnemyCards
             .FirstOrDefault(c => c.cardData.type == CardType.Hero);
         if (enemyHero != null)
-            CardFactory.Instance.CreateHeroOnField(enemyHero.cardData, _enemyHeroArea);
+            CardFactory.Instance.CreateHeroOnField(enemyHero.cardData, _enemyHeroArea, isPlayer: false);
 
+        // Миньоны противника
         var enemyMinions = TurnManager.Instance.EnemyCards
             .Where(c => c.cardData.type == CardType.Minion);
         foreach (var inst in enemyMinions)
-            CardFactory.Instance.CreateMinionInstance(inst, _enemyMinionsArea, false);
+            CardFactory.Instance.CreateMinionInstance(inst, _enemyMinionsArea, isPlayer: false);
     }
 
-    /// <summary>
-    /// Показать сыгранную карту в своей панели.
-    /// </summary>
     public void PlacePlayedCard(CardInstance instance, bool isPlayer)
     {
-        var targetArea = isPlayer
-            ? _playerPlayedArea
-            : _enemyPlayedArea;
-
+        var targetArea = isPlayer ? _playerPlayedArea : _enemyPlayedArea;
         if (instance.cardData.type == CardType.Minion)
             CardFactory.Instance.CreateMinionInstance(instance, targetArea, isPlayer);
         else
@@ -141,9 +135,6 @@ public class UIManager : MonoBehaviour
         foreach (Transform t in _enemyPlayedArea) Destroy(t.gameObject);
     }
 
-    /// <summary>
-    /// Входит в режим таргетинга: все карты подсвечиваются.
-    /// </summary>
     public void BeginTargetMode(AbilityData effectAbility)
     {
         _isTargeting = true;
@@ -152,9 +143,6 @@ public class UIManager : MonoBehaviour
         HighlightAll(true);
     }
 
-    /// <summary>
-    /// Выходит из режима таргетинга.
-    /// </summary>
     public void EndTargetMode()
     {
         _isTargeting = false;

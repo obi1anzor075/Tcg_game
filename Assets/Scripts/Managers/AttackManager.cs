@@ -1,12 +1,12 @@
-using System.Linq;
+п»їusing System.Linq;
 using UnityEngine;
 
 #region Manager: AttackManager
 
 /// <summary>
-/// Отвечает за автоматическую фазу атаки:
-/// все атакующие карты с loyalty > 0 автоматически наносят урон по целям.
-/// Учтены пассивные способности «приоритетная цель» и триггеры OnAttack/OnDamaged.
+/// РћС‚РІРµС‡Р°РµС‚ Р·Р° Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєСѓСЋ С„Р°Р·Сѓ Р°С‚Р°РєРё:
+/// РІСЃРµ Р°С‚Р°РєСѓСЋС‰РёРµ РєР°СЂС‚С‹ СЃ loyalty > 0 Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РЅР°РЅРѕСЃСЏС‚ СѓСЂРѕРЅ РїРѕ С†РµР»СЏРј.
+/// РЈС‡С‚РµРЅС‹ РїР°СЃСЃРёРІРЅС‹Рµ СЃРїРѕСЃРѕР±РЅРѕСЃС‚Рё В«РїСЂРёРѕСЂРёС‚РµС‚РЅР°СЏ С†РµР»СЊВ» Рё С‚СЂРёРіРіРµСЂС‹ OnAttack/OnDamaged.
 /// </summary>
 public class AttackManager : MonoBehaviour
 {
@@ -29,9 +29,9 @@ public class AttackManager : MonoBehaviour
     #region Public API
 
     /// <summary>
-    /// Разрешает фазу атаки: все свои карты с loyalty > 0 автоматически бьют по врагу.
+    /// Р Р°Р·СЂРµС€Р°РµС‚ С„Р°Р·Сѓ Р°С‚Р°РєРё: РІСЃРµ СЃРІРѕРё РєР°СЂС‚С‹ СЃ loyalty > 0 Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё Р±СЊСЋС‚ РїРѕ РІСЂР°РіСѓ.
     /// </summary>
-    /// <param name="isPlayerTurn">true — ход игрока, false — ход ИИ</param>
+    /// <param name="isPlayerTurn">true вЂ” С…РѕРґ РёРіСЂРѕРєР°, false вЂ” С…РѕРґ РР</param>
     public void ResolveAttackPhase(bool isPlayerTurn)
     {
         var attackers = isPlayerTurn
@@ -42,11 +42,11 @@ public class AttackManager : MonoBehaviour
             ? TurnManager.Instance.EnemyCards
             : TurnManager.Instance.PlayerCards;
 
-        // нет атакующих или нет целей — выходим
+        // РЅРµС‚ Р°С‚Р°РєСѓСЋС‰РёС… РёР»Рё РЅРµС‚ С†РµР»РµР№ вЂ” РІС‹С…РѕРґРёРј
         if (attackers.Count == 0 || defenders.Count == 0)
             return;
 
-        // ищем приоритетную цель среди живых, у которых есть пассивная AbilityData.isPriorityTarget
+        // РёС‰РµРј РїСЂРёРѕСЂРёС‚РµС‚РЅСѓСЋ С†РµР»СЊ СЃСЂРµРґРё Р¶РёРІС‹С…, Сѓ РєРѕС‚РѕСЂС‹С… РµСЃС‚СЊ РїР°СЃСЃРёРІРЅР°СЏ AbilityData.isPriorityTarget
         CardInstance priority = defenders
             .FirstOrDefault(d =>
                 d.IsAlive
@@ -54,16 +54,16 @@ public class AttackManager : MonoBehaviour
                 && d.cardData.abilities.Any(ab => ab.isPriorityTarget)
             );
 
-        // каждый атакующий с CanAct
+        // РєР°Р¶РґС‹Р№ Р°С‚Р°РєСѓСЋС‰РёР№ СЃ CanAct
         foreach (var atk in attackers)
         {
             if (!atk.IsAlive || !atk.CanAct)
                 continue;
 
-            // триггерим OnAttack
+            // С‚СЂРёРіРіРµСЂРёРј OnAttack
             atk.OnAttack();
 
-            // выбираем цель: сначала приоритет, потом любой живой миньон, потом герой
+            // РІС‹Р±РёСЂР°РµРј С†РµР»СЊ: СЃРЅР°С‡Р°Р»Р° РїСЂРёРѕСЂРёС‚РµС‚, РїРѕС‚РѕРј Р»СЋР±РѕР№ Р¶РёРІРѕР№ РјРёРЅСЊРѕРЅ, РїРѕС‚РѕРј РіРµСЂРѕР№
             CardInstance target = null;
 
             if (priority != null && priority.IsAlive)
@@ -72,33 +72,28 @@ public class AttackManager : MonoBehaviour
             }
             else
             {
-                // живые миньоны
+                // Р¶РёРІС‹Рµ РјРёРЅСЊРѕРЅС‹
                 target = defenders.FirstOrDefault(d => d.IsAlive && d.cardData.type == CardType.Minion)
                       ?? defenders.FirstOrDefault(d => d.IsAlive && d.cardData.type == CardType.Hero);
             }
 
             if (target == null)
-                break; // все цели мертвы
+                break; // РІСЃРµ С†РµР»Рё РјРµСЂС‚РІС‹
 
-            // наносим урон: сначала защиту, затем HP
+            // РЅР°РЅРѕСЃРёРј СѓСЂРѕРЅ: СЃРЅР°С‡Р°Р»Р° Р·Р°С‰РёС‚Сѓ, Р·Р°С‚РµРј HP
             target.TakeDamage(atk.cardData.attack);
-            // триггерим OnDamaged у цели
+            // С‚СЂРёРіРіРµСЂРёРј OnDamaged Сѓ С†РµР»Рё
             target.OnDamaged();
 
-            // атакуясь, отраженный урон тоже применится через TakeDamage в target,
-            // но если нужно, можно отдельно:
-            atk.TakeDamage(target.cardData.attack);
-            atk.OnDamaged();
-
-            // если priority погиб — сбрасываем
+            // РµСЃР»Рё priority РїРѕРіРёР± вЂ” СЃР±СЂР°СЃС‹РІР°РµРј
             if (priority != null && !priority.IsAlive)
                 priority = null;
         }
 
-        // убираем погибших из списков
+        // СѓР±РёСЂР°РµРј РїРѕРіРёР±С€РёС… РёР· СЃРїРёСЃРєРѕРІ
         TurnManager.Instance.RemoveDeadCards();
 
-        // обновляем UI
+        // РѕР±РЅРѕРІР»СЏРµРј UI
         UIManager.Instance.RefreshBattlefield();
     }
 

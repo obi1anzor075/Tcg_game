@@ -37,6 +37,9 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     private CardInstance _cardInstance;
     private bool _isPlayerHand;
 
+    private bool _isEnemySide;
+    public bool IsEnemy => _isEnemySide;
+
     #endregion
 
     #region Unity
@@ -159,11 +162,19 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     }
 
     /// <summary>Настроить UI для карты на поле (битва).</summary>
-    public void SetupBattle(CardInstance instance)
+    /// <summary>
+    /// Настроить UI для карты на поле (битва).
+    /// </summary>
+    public void SetupBattle(CardInstance instance, bool isPlayerSide)
     {
         _cardInstance = instance;
         _cardData = instance.cardData;
+
+        // в бою это уже не карта в руке
         _isPlayerHand = false;
+
+        // запоминаем, чей это боец
+        _isEnemySide = !isPlayerSide;
 
         // Арт и имя
         if (_artworkImage != null)
@@ -186,7 +197,7 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         if (_hpText != null)
             _hpText.text = instance.currentHP.ToString();
 
-        // Описание способности (берем первую, если есть)
+        // Описание способности (первая, если есть)
         if (_abilityDescText != null)
         {
             if (_cardData.abilities != null && _cardData.abilities.Length > 0)
@@ -209,7 +220,6 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         btn.onClick.RemoveAllListeners();
         btn.onClick.AddListener(OnClicked);
     }
-
     /// <summary>Включить/выключить подсветку карты.</summary>
     public void SetHighlight(bool highlight)
     {
@@ -223,65 +233,42 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 
     private void OnClicked()
     {
-        if (_isPlayerHand)
+        if (!_isPlayerHand) return;
+
+        switch (_cardData.type)
         {
-            switch (_cardData.type)
-            {
-                case CardType.Minion:
-                    // ———————— Розыгрыш преданного ————————
-                    var minionInst = TurnManager.Instance.TryPlayPlayerCard(_cardData);
-                    if (minionInst == null)
-                    {
-                        Debug.LogWarning($"Not enough loyalty to play {_cardData.cardName}");
-                        return;
-                    }
-                    HandManager.Instance.TryPlayCard(_cardData, true);
-                    UIManager.Instance.PlacePlayedCard(minionInst, true);
-                    GameManager.Instance.RecordPlayed(minionInst);
-                    UIManager.Instance.RefreshHands();
-                    break;
+            case CardType.Minion:
+            case CardType.Spell:
+            case CardType.HeroAbility:
+                // одна и та же проверка и списание преданности
+                var inst = TurnManager.Instance.TryPlayCard(_cardData, isPlayer:true);
+                if (_cardData.type != CardType.Minion && inst != null)
+                {
+                    // inst будет null для спеллов, но преданность уже списана и эффект применён
+                }
+                if (inst == null && _cardData.type == CardType.Minion)
+                {
+                    Debug.LogWarning($"Not enough loyalty to play {_cardData.cardName}");
+                    return;
+                }
 
-                case CardType.Spell:
-                case CardType.HeroAbility:
-                    // ———————— Розыгрыш спелла/геро. способности ————————
-                    // 1) Берём первую AbilityData
-                    if (_cardData.abilities == null || _cardData.abilities.Length == 0)
-                    {
-                        Debug.LogWarning($"No abilities assigned to {_cardData.cardName}");
-                        return;
-                    }
-                    var ability = _cardData.abilities[0];
+                // убираем карту из руки
+                HandManager.Instance.TryPlayCard(_cardData, true);
 
-                    // 2) Пробуем списать лояльность и применить OnPlay-пассивки
-                    //    Используем тот же метод, что и для розыгрыша: он сразу вызовет ApplyCardEffect для OnPlay/Passive
-                    var spellInst = TurnManager.Instance.TryPlayPlayerCard(_cardData);
-                    if (spellInst == null)
-                    {
-                        Debug.LogWarning($"Not enough loyalty to cast {_cardData.cardName}");
-                        return;
-                    }
+                // если это миньон — показываем его в PlayedArea
+                if (inst != null)
+                    UIManager.Instance.PlacePlayedCard(inst, true);
 
-                    // 3) Удаляем карту из руки
-                    HandManager.Instance.TryPlayCard(_cardData, true);
+                // для спелла/геро. способности — сразу входим в таргетинг
+                if (_cardData.type != CardType.Minion)
+                    UIManager.Instance.BeginTargetMode(_cardData.abilities[0]);
 
-                    // 4) Обновляем UI руки
-                    UIManager.Instance.RefreshHands();
+                UIManager.Instance.RefreshHands();
+                break;
 
-                    // 5) Входим в режим таргетинга для выбранной способности
-                    UIManager.Instance.BeginTargetMode(ability);
-                    break;
-
-                case CardType.Hero:
-                    // героя из руки не играем
-                    break;
-            }
-        }
-        else if (UIManager.Instance.IsTargeting && _cardInstance != null)
-        {
-            // ———————— Применение спелла к цели ————————
-            EffectProcessor.Instance.ApplyEffectTo(_cardInstance);
-            UIManager.Instance.EndTargetMode();
-            UIManager.Instance.RefreshBattlefield();
+            case CardType.Hero:
+                // героя из руки не играем
+                break;
         }
     }
 

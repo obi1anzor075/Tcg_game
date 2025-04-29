@@ -30,8 +30,8 @@ public class AIManager : MonoBehaviour
     public void PlayTurn()
     {
         // 1. Начало хода ИИ: сброс и восстановление лояльности
-        TurnManager.Instance.StartEnemyTurn();
-        int totalLoyalty = TurnManager.Instance.TotalEnemyLoyalty;
+        TurnManager.Instance.StartTurn(isPlayer: false);
+        int totalLoyalty = TurnManager.Instance.EnemyLoyalty;
         Debug.Log($"[AIManager] AI start turn. Total Loyalty = {totalLoyalty}");
 
         // 2. Копируем руку, чтобы безопасно итерироваться и модифицировать её
@@ -42,7 +42,7 @@ public class AIManager : MonoBehaviour
         {
             if (cardData.baseLoyalty <= totalLoyalty)
             {
-                var inst = TurnManager.Instance.TryPlayEnemyCard(cardData);
+                var inst = TurnManager.Instance.TryPlayCard(cardData, isPlayer:false);
                 if (inst != null)
                 {
                     totalLoyalty -= cardData.baseLoyalty;
@@ -60,7 +60,7 @@ public class AIManager : MonoBehaviour
             if (cardData.loyaltyCost <= totalLoyalty)
             {
                 // способности могут требовать таргетинга, но для простоты применяем без таргета
-                var inst = TurnManager.Instance.TryPlayEnemyCard(cardData);
+                var inst = TurnManager.Instance.TryPlayCard(cardData, isPlayer:false);
                 if (inst != null)
                 {
                     totalLoyalty -= cardData.loyaltyCost;
